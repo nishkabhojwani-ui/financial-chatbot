@@ -87,6 +87,44 @@ def query_db(sql):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def validate_sql(sql):
+    """Validate and attempt to execute SQL to catch errors early"""
+    sql_upper = sql.upper()
+
+    # Check for common issues:
+    # 1. Using pc.* without JOIN to pl_categories
+    if 'pc.' in sql and 'JOIN pl_categories pc' not in sql_upper:
+        return False, "Missing JOIN pl_categories"
+
+    # 2. Using u.* without proper unit join chain
+    if 'u.unit_name' in sql and 'JOIN units u' not in sql_upper:
+        return False, "Missing JOIN units"
+
+    # 3. Check for ambiguous column references or missing JOINs
+    if sql_upper.count('JOIN pl_categories pc') > 1:
+        return False, "Duplicate pl_categories JOIN"
+
+    return True, "OK"
+
+def fix_sql_joins(sql, question):
+    """Fix common SQL generation errors"""
+    sql_upper = sql.upper()
+
+    # ONLY add JOIN if truly missing
+    if 'pc.' in sql and 'JOIN pl_categories pc' not in sql_upper:
+        # Find the position to insert the JOIN
+        where_pos = sql_upper.find('WHERE')
+        if where_pos < 0:
+            where_pos = sql_upper.find('GROUP')
+        if where_pos < 0:
+            where_pos = len(sql)
+
+        # Insert the JOIN before WHERE/GROUP
+        join_clause = '\nJOIN pl_categories pc ON mf.category_id = pc.category_id'
+        sql = sql[:where_pos].rstrip() + join_clause + '\n' + sql[where_pos:]
+
+    return sql
+
 def get_llm_sql(question, unit):
     """Ask LLM to generate SQL"""
     if not API_KEY:
@@ -197,7 +235,10 @@ SQL:"""
             else:
                 sql = sql + ';'
 
-            return sql if 'FROM' in sql.upper() else None
+            if not ('FROM' in sql.upper()):
+                return None
+
+            return sql
         return None
     except Exception as e:
         st.error(f"LLM Error: {e}")
