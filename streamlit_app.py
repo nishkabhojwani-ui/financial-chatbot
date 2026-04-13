@@ -305,18 +305,22 @@ def get_narrative(question, data):
             "model": "anthropic/claude-3-haiku",
             "messages": [{
                 "role": "user",
-                "content": f"""Analyze this DP World Maritime Financial data and provide a brief business summary.
+                "content": f"""You are a financial analyst. Analyze this data and write a brief summary (2-3 paragraphs).
 
-IMPORTANT:
-1. Only 2024 data is available. No other years.
-2. Always mention: "Note: We only have financial data for 2024. No other years are available."
-3. Use proper spacing between all words
-4. Format numbers clearly with proper commas (e.g., 8.17 million, not 8.17million)
+CRITICAL FORMATTING RULES - MUST FOLLOW:
+- ALWAYS put a space after commas and periods
+- ALWAYS put spaces between words
+- NEVER concatenate words together
+- Write numbers as: "45,973 million" (with comma and space)
+- NEVER write "million," without space after it
+- Example WRONG: "whilethebudgetwas0"
+- Example RIGHT: "while the budget was 0"
 
-Question: {question}
-Data: {summary}
+Data Summary: {summary}
+Question Asked: {question}
 
-Provide 2-3 short paragraphs with business insights."""
+Write 2-3 paragraphs. Remember: ALWAYS use proper spacing between words and after punctuation.
+Note: We only have financial data for 2024. No other years are available."""
             }],
             "temperature": 0.7,
             "max_tokens": 400
@@ -684,13 +688,15 @@ if send_btn or (st.session_state.get("query") and user_query):
 
             # Summary section with narrative
             st.markdown("### Summary")
-            st.markdown(narrative if narrative else "Query executed successfully.")
-
-            # Chart section - for trend and comparison queries
-            chart = generate_chart(query_to_run, data)
-            if chart:
-                st.markdown("### Visualization")
-                st.plotly_chart(chart, use_container_width=True)
+            if narrative:
+                # Clean up narrative text - fix spacing issues
+                clean_narrative = narrative.replace("million,", "million, ").replace("million.", "million. ")
+                # Fix concatenated words like "whilethebudget" -> "while the budget"
+                import re
+                clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
+                st.markdown(clean_narrative)
+            else:
+                st.markdown("Query executed successfully.")
 
             # Data section
             st.markdown("### Data")
