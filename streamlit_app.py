@@ -422,7 +422,11 @@ def generate_chart(question, data):
 
         # RULE 3: RANKING / CONTRIBUTION (asking for highest/lowest, single numeric value)
         if any(word in question_lower for word in ['highest', 'lowest', 'top', 'ranking', 'by vessel', 'contribution']) and len(numeric_cols) == 1:
-            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0])
+            # Prioritize vessel_col if query mentions vessels
+            if 'vessel' in question_lower and vessel_col:
+                return _create_horizontal_bar_chart(df, [vessel_col], numeric_cols[0], question)
+            elif text_cols:
+                return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
 
         # RULE 4: VARIANCE (actual minus budget)
         if any(word in question_lower for word in ['variance', 'over/under', 'performance', 'vs budget']) and actual_col and budget_col:
@@ -524,29 +528,41 @@ def _create_grouped_bar_chart(df, month_col, actual_col, budget_col, ly_col):
     return fig
 
 
-def _create_horizontal_bar_chart(df, text_cols, value_col):
+def _create_horizontal_bar_chart(df, text_cols, value_col, question=""):
     """RULE 3: Horizontal bar chart for ranking"""
     import plotly.graph_objects as go
 
     df_sorted = df.sort_values(value_col, ascending=True)
     x_col = text_cols[0]
 
+    # Format values with RC currency
+    formatted_values = [f"RC {v:,.0f}" if pd.notna(v) else "" for v in df_sorted[value_col]]
+
     fig = go.Figure(data=[
         go.Bar(
             y=df_sorted[x_col],
             x=df_sorted[value_col],
             orientation='h',
-            marker_color=['#0078D4' if v >= 0 else '#E74C3C' for v in df_sorted[value_col]]
+            marker_color=['#0078D4' if v >= 0 else '#E74C3C' for v in df_sorted[value_col]],
+            text=formatted_values,
+            textposition='auto'
         )
     ])
 
+    # Generate title from question if available
+    if question:
+        title = question[:50] + "..." if len(question) > 50 else question
+    else:
+        title = f"{value_col} by {x_col}"
+
     fig.update_layout(
-        title=f"{value_col} by {x_col}",
+        title=title,
         xaxis_title=f"{value_col} (RC)",
         yaxis_title=x_col,
         template='plotly_white',
-        height=max(300, len(df) * 25),
-        font=dict(size=11)
+        height=max(300, len(df) * 35),
+        font=dict(size=11),
+        showlegend=False
     )
     return fig
 
