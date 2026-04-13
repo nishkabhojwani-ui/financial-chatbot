@@ -415,6 +415,10 @@ def generate_chart(question, data):
                             title='Comparison',
                             labels={x_col: x_col},
                             barmode='group')
+                # Assign different colors to each series
+                colors = ['#00d084', '#4a90e2', '#f5a623', '#7ed321', '#bd10e0']
+                for i, trace in enumerate(fig.data):
+                    trace.marker.color = colors[i % len(colors)]
             else:
                 fig = px.bar(df, x=x_col, y=y_col,
                             title='Comparison',
@@ -425,17 +429,21 @@ def generate_chart(question, data):
                            title='Data Plot',
                            labels={y_col: y_col})
 
-        # Update colors to DP World green
-        fig.update_traces(marker=dict(color='#00d084'))
-        for trace in fig.data:
-            if hasattr(trace, 'line'):
-                trace.line.color = '#00d084'
+        # Update colors (skip if already set for multi-column charts)
+        if len(numeric_cols) == 1:
+            fig.update_traces(marker=dict(color='#00d084'))
+            for trace in fig.data:
+                if hasattr(trace, 'line'):
+                    trace.line.color = '#00d084'
 
         fig.update_layout(
             template='plotly_white',
             height=400,
             font=dict(family="sans-serif"),
-            hovermode='x unified'
+            hovermode='x unified',
+            bargap=0.2,
+            bargroupgap=0.15,
+            xaxis=dict(tickangle=-45)
         )
 
         return fig
