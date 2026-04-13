@@ -369,114 +369,289 @@ Note: We only have financial data for 2024. No other years are available."""
         return None
 
 def generate_chart(question, data):
-    """Generate chart using simple heuristics - no LLM required"""
+    """Generate chart using sophisticated rule-based selection engine"""
     if not data or len(data) < 1:
         return None
 
     try:
         import plotly.express as px
+        import plotly.graph_objects as go
 
         df = pd.DataFrame(data)
         cols = list(df.columns)
+        question_lower = question.lower()
 
-        # Skip if only 1 row (not enough for meaningful visualization)
+        # Skip if only 1 row
         if len(df) < 2:
             return None
 
-        # Find numeric and text columns
+        # Categorize columns
         numeric_cols = []
         text_cols = []
         month_col = None
+        vessel_col = None
+        metric_col = None
 
         for col in cols:
-            try:
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    numeric_cols.append(col)
-                elif pd.api.types.is_object_dtype(df[col]):
-                    text_cols.append(col)
-                    # Check if this is a month column
-                    if 'month' in col.lower():
-                        month_col = col
-            except:
-                pass
-
-        # If we only have 1 numeric column and it's constant, skip chart
-        if len(numeric_cols) == 1:
-            if df[numeric_cols[0]].nunique() < 2:
-                return None
+            col_lower = col.lower()
+            if pd.api.types.is_numeric_dtype(df[col]):
+                numeric_cols.append(col)
+            elif pd.api.types.is_object_dtype(df[col]):
+                text_cols.append(col)
+                if 'month' in col_lower:
+                    month_col = col
+                elif 'vessel' in col_lower:
+                    vessel_col = col
+                elif 'category' in col_lower or 'metric' in col_lower:
+                    metric_col = col
 
         if not numeric_cols:
             return None
 
-        # Determine chart type based on data structure
-        x_col = month_col if month_col else (text_cols[0] if text_cols else cols[0])
-        y_col = numeric_cols[0]
+        # RULE 1: TREND OVER TIME (month present + asking about trend/movement)
+        if month_col and any(word in question_lower for word in ['trend', 'over', 'across', 'throughout', 'by month', 'monthly']):
+            return _create_line_chart(df, month_col, numeric_cols)
 
-        # Create chart
+        # RULE 2: ACTUAL vs BUDGET vs LY (multiple comparable columns)
+        actual_col = next((c for c in numeric_cols if 'actual' in c.lower()), None)
+        budget_col = next((c for c in numeric_cols if 'budget' in c.lower()), None)
+        ly_col = next((c for c in numeric_cols if 'last_year' in c.lower() or 'ly' in c.lower()), None)
+
+        if actual_col and (budget_col or ly_col):
+            return _create_grouped_bar_chart(df, month_col, actual_col, budget_col, ly_col)
+
+        # RULE 3: RANKING / CONTRIBUTION (asking for highest/lowest, single numeric value)
+        if any(word in question_lower for word in ['highest', 'lowest', 'top', 'ranking', 'by vessel', 'contribution']) and len(numeric_cols) == 1:
+            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0])
+
+        # RULE 4: VARIANCE (actual minus budget)
+        if any(word in question_lower for word in ['variance', 'over/under', 'performance', 'vs budget']) and actual_col and budget_col:
+            return _create_diverging_bar_chart(df, actual_col, budget_col, month_col)
+
+        # RULE 5: MARGIN TREND (margin % over time)
+        if any(word in question_lower for word in ['margin']) and month_col:
+            return _create_margin_trend_chart(df, month_col, numeric_cols)
+
+        # RULE 6: MULTI-VESSEL SUMMARY (multiple vessels, multiple metrics for one period)
+        if vessel_col and len(numeric_cols) > 1:
+            return _create_heatmap_table(df, vessel_col, numeric_cols)
+
+        # DEFAULT: Use smart detection based on structure
         if month_col:
-            # Line chart for monthly trends
-            month_order = ['January', 'February', 'March', 'April', 'May', 'June',
-                          'July', 'August', 'September', 'October', 'November', 'December']
-            df_sorted = df.copy()
-            df_sorted['_month_sort'] = df_sorted[month_col].apply(
-                lambda x: month_order.index(str(x)) if str(x) in month_order else 0
-            )
-            df_sorted = df_sorted.sort_values('_month_sort')
-
-            # If multiple numeric columns, create multiple line traces
-            if len(numeric_cols) > 1:
-                fig = px.line(df_sorted, x=month_col, y=numeric_cols, markers=True,
-                             title='Monthly Trend',
-                             labels={month_col: 'Month'})
-            else:
-                fig = px.line(df_sorted, x=month_col, y=y_col, markers=True,
-                             title='Monthly Trend',
-                             labels={y_col: y_col, month_col: 'Month'})
-        elif len(text_cols) > 0 and len(numeric_cols) > 0:
-            # Bar chart for categorical comparisons
-            # If multiple numeric columns (e.g., actual vs budget), show all of them
-            if len(numeric_cols) > 1:
-                fig = px.bar(df, x=x_col, y=numeric_cols,
-                            title='Comparison',
-                            labels={x_col: x_col},
-                            barmode='group')
-                # Assign different colors to each series
-                colors = ['#00d084', '#4a90e2', '#f5a623', '#7ed321', '#bd10e0']
-                for i, trace in enumerate(fig.data):
-                    trace.marker.color = colors[i % len(colors)]
-            else:
-                fig = px.bar(df, x=x_col, y=y_col,
-                            title='Comparison',
-                            labels={y_col: y_col, x_col: x_col})
+            return _create_line_chart(df, month_col, numeric_cols)
+        elif len(numeric_cols) > 1 and text_cols:
+            return _create_grouped_bar_chart(df, text_cols[0], numeric_cols[0], numeric_cols[1] if len(numeric_cols) > 1 else None, None)
+        elif text_cols and len(numeric_cols) == 1:
+            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0])
         else:
-            # Scatter plot for numeric data
-            fig = px.scatter(df, x=cols[0], y=y_col,
-                           title='Data Plot',
-                           labels={y_col: y_col})
-
-        # Update colors (skip if already set for multi-column charts)
-        if len(numeric_cols) == 1:
-            fig.update_traces(marker=dict(color='#00d084'))
-            for trace in fig.data:
-                if hasattr(trace, 'line'):
-                    trace.line.color = '#00d084'
-
-        fig.update_layout(
-            template='plotly_white',
-            height=400,
-            font=dict(family="sans-serif"),
-            hovermode='x unified',
-            bargap=0.2,
-            bargroupgap=0.15,
-            xaxis=dict(tickangle=-45)
-        )
-
-        return fig
+            return None
 
     except Exception as e:
-        # Silently return None for charts that can't be generated
-        # (prevents showing error messages for valid data that just doesn't chart well)
         return None
+
+
+def _create_line_chart(df, month_col, numeric_cols):
+    """RULE 1: Line chart for trends over time"""
+    import plotly.graph_objects as go
+    month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December']
+
+    df_sorted = df.copy()
+    df_sorted['_month_sort'] = df_sorted[month_col].apply(
+        lambda x: month_order.index(str(x)) if str(x) in month_order else 0
+    )
+    df_sorted = df_sorted.sort_values('_month_sort')
+
+    fig = go.Figure()
+    colors = ['#0078D4', '#107C10', '#E74C3C', '#FFB900', '#7B68EE']
+
+    for i, col in enumerate(numeric_cols):
+        fig.add_trace(go.Scatter(
+            x=df_sorted[month_col],
+            y=df_sorted[col],
+            mode='lines+markers',
+            name=col,
+            line=dict(color=colors[i % len(colors)], width=2),
+            marker=dict(size=6)
+        ))
+
+    fig.update_layout(
+        title=f"Trend Analysis - {', '.join(numeric_cols)}",
+        xaxis_title="Month",
+        yaxis_title="Value (RC)",
+        template='plotly_white',
+        height=450,
+        hovermode='x unified',
+        font=dict(size=11)
+    )
+    return fig
+
+
+def _create_grouped_bar_chart(df, month_col, actual_col, budget_col, ly_col):
+    """RULE 2: Grouped bar chart for Actual vs Budget vs LY"""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+
+    if month_col:
+        month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
+        df_sorted = df.copy()
+        df_sorted['_month_sort'] = df_sorted[month_col].apply(
+            lambda x: month_order.index(str(x)) if str(x) in month_order else 0
+        )
+        df_sorted = df_sorted.sort_values('_month_sort')
+        x_vals = df_sorted[month_col]
+    else:
+        df_sorted = df
+        x_vals = range(len(df))
+
+    fig.add_trace(go.Bar(x=x_vals, y=df_sorted[actual_col], name='Actual', marker_color='#0078D4'))
+    if budget_col:
+        fig.add_trace(go.Bar(x=x_vals, y=df_sorted[budget_col], name='Budget', marker_color='#A8A8A8'))
+    if ly_col:
+        fig.add_trace(go.Bar(x=x_vals, y=df_sorted[ly_col], name='Last Year', marker_color='#107C10'))
+
+    fig.update_layout(
+        title="Actual vs Budget Analysis",
+        xaxis_title="Period",
+        yaxis_title="Amount (RC)",
+        barmode='group',
+        template='plotly_white',
+        height=450,
+        font=dict(size=11)
+    )
+    return fig
+
+
+def _create_horizontal_bar_chart(df, text_cols, value_col):
+    """RULE 3: Horizontal bar chart for ranking"""
+    import plotly.graph_objects as go
+
+    df_sorted = df.sort_values(value_col, ascending=True)
+    x_col = text_cols[0]
+
+    fig = go.Figure(data=[
+        go.Bar(
+            y=df_sorted[x_col],
+            x=df_sorted[value_col],
+            orientation='h',
+            marker_color=['#0078D4' if v >= 0 else '#E74C3C' for v in df_sorted[value_col]]
+        )
+    ])
+
+    fig.update_layout(
+        title=f"{value_col} by {x_col}",
+        xaxis_title=f"{value_col} (RC)",
+        yaxis_title=x_col,
+        template='plotly_white',
+        height=max(300, len(df) * 25),
+        font=dict(size=11)
+    )
+    return fig
+
+
+def _create_diverging_bar_chart(df, actual_col, budget_col, month_col):
+    """RULE 4: Diverging bar chart for variance"""
+    import plotly.graph_objects as go
+
+    df['variance'] = df[actual_col] - df[budget_col]
+    df_sorted = df.sort_values('variance')
+
+    x_label = df_sorted[month_col] if month_col else df_sorted.index
+
+    fig = go.Figure(data=[
+        go.Bar(
+            x=df_sorted['variance'],
+            y=x_label,
+            orientation='h',
+            marker_color=['#107C10' if v >= 0 else '#E74C3C' for v in df_sorted['variance']],
+            text=[f"RC {v:,.0f}" for v in df_sorted['variance']],
+            textposition='auto'
+        )
+    ])
+
+    fig.add_vline(x=0, line_dash="dash", line_color="black")
+
+    fig.update_layout(
+        title="Variance Analysis (Actual vs Budget)",
+        xaxis_title="Variance (RC)",
+        template='plotly_white',
+        height=450,
+        font=dict(size=11)
+    )
+    return fig
+
+
+def _create_margin_trend_chart(df, month_col, numeric_cols):
+    """RULE 5: Dual-axis chart with margin % and underlying USD"""
+    import plotly.graph_objects as go
+
+    margin_cols = [c for c in numeric_cols if 'margin' in c.lower()]
+    usd_cols = [c for c in numeric_cols if 'margin' not in c.lower()]
+
+    if not margin_cols:
+        return _create_line_chart(df, month_col, numeric_cols)
+
+    month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December']
+    df_sorted = df.copy()
+    df_sorted['_month_sort'] = df_sorted[month_col].apply(
+        lambda x: month_order.index(str(x)) if str(x) in month_order else 0
+    )
+    df_sorted = df_sorted.sort_values('_month_sort')
+
+    fig = go.Figure()
+
+    # Add USD bars on left axis
+    if usd_cols:
+        for col in usd_cols:
+            fig.add_trace(go.Bar(x=df_sorted[month_col], y=df_sorted[col], name=col, yaxis='y1'))
+
+    # Add margin lines on right axis
+    for col in margin_cols:
+        fig.add_trace(go.Scatter(
+            x=df_sorted[month_col],
+            y=df_sorted[col] * 100,
+            mode='lines+markers',
+            name=f"{col} %",
+            yaxis='y2',
+            line=dict(width=2)
+        ))
+
+    fig.update_layout(
+        title="Margin Analysis",
+        xaxis_title="Month",
+        yaxis=dict(title="Amount (RC)", side='left'),
+        yaxis2=dict(title="Margin (%)", overlaying='y', side='right'),
+        template='plotly_white',
+        height=450,
+        hovermode='x unified',
+        font=dict(size=11)
+    )
+    return fig
+
+
+def _create_heatmap_table(df, vessel_col, numeric_cols):
+    """RULE 6: Heatmap for multi-vessel summary"""
+    import plotly.graph_objects as go
+
+    fig = go.Figure(data=go.Heatmap(
+        z=[df[col].values for col in numeric_cols],
+        x=df[vessel_col].values,
+        y=numeric_cols,
+        colorscale='RdYlGn'
+    ))
+
+    fig.update_layout(
+        title="Multi-Vessel Summary",
+        xaxis_title="Vessel",
+        yaxis_title="Metric",
+        template='plotly_white',
+        height=400,
+        font=dict(size=11)
+    )
+    return fig
 
 def execute_query(question, unit='Africa'):
     """Execute query and return results - LLM analyzes and routes"""
