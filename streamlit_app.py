@@ -385,93 +385,105 @@ Note: We only have financial data for 2024. No other years are available."""
         return None
 
 def generate_chart(question, data):
-    """Generate chart using sophisticated rule-based selection engine"""
+    """Generate chart with clear logic"""
     if not data or len(data) < 1:
         return None
 
     try:
-        import plotly.express as px
-        import plotly.graph_objects as go
-
         df = pd.DataFrame(data)
         cols = list(df.columns)
         question_lower = question.lower()
 
-        # Skip if only 1 row
         if len(df) < 2:
             return None
 
-        # Categorize columns
-        numeric_cols = []
-        text_cols = []
-        month_col = None
-        vessel_col = None
-        metric_col = None
-
-        for col in cols:
-            col_lower = col.lower()
-            if pd.api.types.is_numeric_dtype(df[col]):
-                numeric_cols.append(col)
-            elif pd.api.types.is_object_dtype(df[col]):
-                text_cols.append(col)
-                if 'month' in col_lower:
-                    month_col = col
-                elif 'vessel' in col_lower:
-                    vessel_col = col
-                elif 'category' in col_lower or 'metric' in col_lower:
-                    metric_col = col
+        # Detect column types
+        numeric_cols = [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
+        text_cols = [c for c in cols if pd.api.types.is_object_dtype(df[c])]
 
         if not numeric_cols:
             return None
 
-        # RULE 1: TREND OVER TIME (month present + asking about trend/movement)
-        if month_col and any(word in question_lower for word in ['trend', 'over', 'across', 'throughout', 'by month', 'monthly']):
+        # Detect special columns
+        has_month = any('month' in c.lower() for c in cols)
+        has_vessel = any('vessel' in c.lower() for c in cols)
+        has_actual = any('actual' in c.lower() for c in numeric_cols)
+        has_budget = any('budget' in c.lower() for c in numeric_cols)
+        has_multiple_numeric = len(numeric_cols) > 1
+
+        # Logic 1: If asking for comparison or vs → BAR CHART (grouped bars)
+        if any(word in question_lower for word in ['compare', ' vs ', 'vs ', ' vs', 'comparison']):
+            return _create_bar_chart(df, text_cols, numeric_cols, question)
+
+        # Logic 2: If asking for actual vs budget → BAR CHART (grouped)
+        if has_actual and has_budget:
+            return _create_bar_chart(df, text_cols, numeric_cols, question)
+
+        # Logic 3: If asking for ranking/highest/lowest → HORIZONTAL BAR
+        if any(word in question_lower for word in ['highest', 'lowest', 'top', 'rank']):
+            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
+
+        # Logic 4: If asking for by vessel → HORIZONTAL BAR (sorted)
+        if 'by vessel' in question_lower or 'each vessel' in question_lower:
+            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
+
+        # Logic 5: If has months and asking for trend → LINE CHART
+        if has_month and any(word in question_lower for word in ['trend', 'monthly', 'by month']):
+            return _create_line_chart(df, [c for c in cols if 'month' in c.lower()][0], numeric_cols)
+
+        # Logic 6: Default for multiple numeric columns → BAR CHART
+        if has_multiple_numeric and text_cols:
+            return _create_bar_chart(df, text_cols, numeric_cols, question)
+
+        # Logic 7: Default for single numeric + text → HORIZONTAL BAR
+        if text_cols and len(numeric_cols) == 1:
+            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
+
+        # Logic 8: If has months → LINE CHART
+        if has_month:
+            month_col = [c for c in cols if 'month' in c.lower()][0]
             return _create_line_chart(df, month_col, numeric_cols)
 
-        # RULE 2: ACTUAL vs BUDGET vs LY (multiple comparable columns)
-        actual_col = next((c for c in numeric_cols if 'actual' in c.lower()), None)
-        budget_col = next((c for c in numeric_cols if 'budget' in c.lower()), None)
-        ly_col = next((c for c in numeric_cols if 'last_year' in c.lower() or 'ly' in c.lower()), None)
-
-        if actual_col and (budget_col or ly_col):
-            return _create_grouped_bar_chart(df, month_col, actual_col, budget_col, ly_col)
-
-        # Also check for comparison queries with multiple numeric columns (Unit comparison, etc)
-        if any(word in question_lower for word in ['compare', 'vs', 'comparison']) and len(numeric_cols) > 1:
-            return _create_grouped_bar_chart(df, month_col, numeric_cols[0], numeric_cols[1] if len(numeric_cols) > 1 else None, None)
-
-        # RULE 3: RANKING / CONTRIBUTION (asking for highest/lowest, single numeric value)
-        if any(word in question_lower for word in ['highest', 'lowest', 'top', 'ranking', 'by vessel', 'contribution']) and len(numeric_cols) == 1:
-            # Prioritize vessel_col if query mentions vessels
-            if 'vessel' in question_lower and vessel_col:
-                return _create_horizontal_bar_chart(df, [vessel_col], numeric_cols[0], question)
-            elif text_cols:
-                return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
-
-        # RULE 4: VARIANCE (actual minus budget)
-        if any(word in question_lower for word in ['variance', 'over/under', 'performance', 'vs budget']) and actual_col and budget_col:
-            return _create_diverging_bar_chart(df, actual_col, budget_col, month_col)
-
-        # RULE 5: MARGIN TREND (margin % over time)
-        if any(word in question_lower for word in ['margin']) and month_col:
-            return _create_margin_trend_chart(df, month_col, numeric_cols)
-
-        # RULE 6: MULTI-VESSEL SUMMARY (multiple vessels, multiple metrics for one period)
-        if vessel_col and len(numeric_cols) > 1:
-            return _create_heatmap_table(df, vessel_col, numeric_cols)
-
-        # DEFAULT: Use smart detection based on structure
-        if month_col:
-            return _create_line_chart(df, month_col, numeric_cols)
-        elif len(numeric_cols) > 1 and text_cols:
-            return _create_grouped_bar_chart(df, text_cols[0], numeric_cols[0], numeric_cols[1] if len(numeric_cols) > 1 else None, None)
-        elif text_cols and len(numeric_cols) == 1:
-            return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0])
-        else:
-            return None
+        return None
 
     except Exception as e:
         return None
+
+
+def _create_bar_chart(df, text_cols, numeric_cols, question=""):
+    """Create grouped bar chart for comparisons"""
+    import plotly.graph_objects as go
+
+    if not text_cols or not numeric_cols:
+        return None
+
+    x_col = text_cols[0]
+    fig = go.Figure()
+
+    colors = ['#0078D4', '#A8A8A8', '#107C10', '#FFB900', '#E74C3C']
+
+    # Add bars for each numeric column
+    for i, col in enumerate(numeric_cols):
+        fig.add_trace(go.Bar(
+            x=df[x_col],
+            y=df[col],
+            name=col,
+            marker_color=colors[i % len(colors)]
+        ))
+
+    title = question[:60] + "..." if len(question) > 60 else question
+
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_col,
+        yaxis_title="Amount (RC)",
+        barmode='group',
+        template='plotly_white',
+        height=450,
+        font=dict(size=11),
+        hovermode='x unified'
+    )
+    return fig
 
 
 def _create_line_chart(df, month_col, numeric_cols):
