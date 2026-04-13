@@ -771,7 +771,15 @@ if send_btn or (st.session_state.get("query") and user_query):
 
             # Data section
             st.markdown("### Data")
-            st.dataframe(data, use_container_width=True, hide_index=True)
+            # Format margin columns as percentages
+            display_data = pd.DataFrame(data)
+            for col in display_data.columns:
+                if 'margin' in col.lower() and col not in ['unit_name', 'vessel_name', 'category_name', 'month', 'year']:
+                    # Check if values are already percentages (if max > 100, assume already multiplied)
+                    if display_data[col].max() < 100 and display_data[col].min() > -100:
+                        # Format as percentage
+                        display_data[col] = display_data[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else x)
+            st.dataframe(display_data, use_container_width=True, hide_index=True)
 
             # Show SQL query in expander
             if sql:
