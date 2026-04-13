@@ -93,31 +93,65 @@ def get_llm_sql(question, unit):
         return None
 
     try:
-        context = f"""You are analyzing DP World Maritime Financial P&A data.
+        # Get key categories for examples
+        key_categories = [c for c in ALL_CATEGORIES if any(x in c.lower() for x in ['revenue', 'cost', 'ebitda', 'ebit', 'pat'])][:5]
 
-DATABASE SCHEMA (use these exact table aliases: mf=monthly_financials, v=vessels, u=units, pc=pl_categories):
-- monthly_financials (mf): Contains actual, budget, last_year, and risk_factor_10 columns
-  ** CRITICAL: month column stores TEXT month names ('January', 'February', ..., 'December'), NOT numbers
-  ** CRITICAL: Use 'mf.month' for month comparisons, NEVER use table alias 'm'
-- vessels (v): Ship vessels with names like 'Topaz Mariner', 'Ever Given', 'Topaz Resolve', etc.
-- units (u): Geographic divisions - 'Africa' or 'MENA' (Middle East & North Africa)
-- pl_categories (pc): Financial categories - EXACT NAMES:
-{', '.join(ALL_CATEGORIES)}
+        context = f"""You are generating SQL for DP World Maritime Financial Analysis.
 
-COLUMNS - Use these EXACT names:
-  monthly_financials (mf): vessel_id, category_id, year, month (TEXT!), actual, budget, last_year, risk_factor_10
-  vessels (v): vessel_id, vessel_name, unit_id
-  units (u): unit_id, unit_name
-  pl_categories (pc): category_id, category_name
+DATABASE STRUCTURE:
+- units (u): unit_id, unit_name ('Africa' or 'MENA')
+- vessels (v): vessel_id, vessel_name, unit_id
+- pl_categories (pc): category_id, category_name (like 'Total Revenue', 'EBITDA', 'Charter Hire')
+- monthly_financials (mf): vessel_id, category_id, year, month (TEXT), actual, budget, last_year, risk_factor_10
 
-Generate ONLY a SQL query to answer: "{question}"
-Return JUST the SQL in a code block, no explanation.
+FOREIGN KEYS:
+  mf.vessel_id → v.vessel_id
+  mf.category_id → pc.category_id
+  v.unit_id → u.unit_id
 
-CRITICAL RULES:
-1. Use exact table aliases: mf, v, u, pc (NEVER create custom aliases)
-2. Always use proper JOIN...ON with foreign keys
-3. Month is TEXT - use mf.month = 'September', NOT mf.month = 9
-4. Use proper aggregation (SUM for totals)"""
+IMPORTANT COLUMN NOTES:
+- month is TEXT: 'January', 'February', ... 'December' (NEVER use numbers 1, 2, 3)
+- actual and budget are COLUMNS for variance analysis (not categories)
+- Categories: 'Total Revenue', 'EBITDA', 'Charter Hire', 'Total Operating Cost', 'Crew Payroll Cost', etc.
+
+QUERY PATTERNS - Copy the Join structure exactly:
+
+PATTERN 1 - Compare by unit:
+SELECT u.unit_name, SUM(mf.actual) as total
+FROM monthly_financials mf
+JOIN vessels v ON mf.vessel_id = v.vessel_id
+JOIN units u ON v.unit_id = u.unit_id
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE u.unit_name IN ('Africa', 'MENA')
+GROUP BY u.unit_name
+
+PATTERN 2 - Filter by specific category:
+SELECT pc.category_name, SUM(mf.actual) as total
+FROM monthly_financials mf
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'Total Revenue'
+GROUP BY pc.category_name
+
+PATTERN 3 - Actual vs Budget variance:
+SELECT u.unit_name, SUM(mf.actual) as actual, SUM(mf.budget) as budget, SUM(mf.actual - mf.budget) as variance
+FROM monthly_financials mf
+JOIN vessels v ON mf.vessel_id = v.vessel_id
+JOIN units u ON v.unit_id = u.unit_id
+WHERE u.unit_name = 'Africa'
+
+PATTERN 4 - By vessel breakdown:
+SELECT v.vessel_name, SUM(mf.actual) as total
+FROM monthly_financials mf
+JOIN vessels v ON mf.vessel_id = v.vessel_id
+JOIN units u ON v.unit_id = u.unit_id
+WHERE u.unit_name = 'Africa'
+GROUP BY v.vessel_name
+
+AVAILABLE CATEGORIES: {', '.join(key_categories)}, {', '.join(ALL_CATEGORIES[5:10])}, ... ({len(ALL_CATEGORIES)} total)
+
+CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
+Task: "{question}"
+SQL:"""
 
         payload = {
             "model": "anthropic/claude-3-haiku",
@@ -139,10 +173,31 @@ CRITICAL RULES:
         )
 
         if resp.status_code == 200:
-            sql = resp.json()["choices"][0]["message"]["content"].strip()
-            if sql.startswith('```'):
-                sql = sql.split('```')[1].replace('sql', '').strip()
-            return sql
+            response = resp.json()["choices"][0]["message"]["content"].strip()
+            sql = response
+
+            # Extract SQL from code block if present
+            if '```sql' in sql or '```' in sql:
+                parts = sql.split('```')
+                for part in parts:
+                    if 'SELECT' in part.upper():
+                        sql = part.replace('sql', '').strip()
+                        break
+
+            # Find SELECT statement
+            if 'SELECT' not in sql.upper():
+                return None
+
+            select_pos = sql.upper().find('SELECT')
+            sql = sql[select_pos:].strip()
+
+            # Simple cleanup: if there's a semicolon, take up to and including it
+            if ';' in sql:
+                sql = sql[:sql.find(';') + 1]
+            else:
+                sql = sql + ';'
+
+            return sql if 'FROM' in sql.upper() else None
         return None
     except Exception as e:
         st.error(f"LLM Error: {e}")
