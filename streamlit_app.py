@@ -462,36 +462,36 @@ ORDER BY u.unit_name, total DESC"""
     narrative = get_narrative(question, data)
     return data, narrative, sql
 
-# Streamlit UI with DP World Branding and Logo
-st.markdown("""
-<style>
-.dp-header-text {
-    text-align: center;
-    padding: 10px 0;
-    border-bottom: 3px solid #00d084;
-}
-.dp-logo-text {
-    font-size: 28px;
-    font-weight: bold;
-    color: #00d084;
-    margin: 0;
-}
-.dp-tagline {
-    font-size: 13px;
-    color: #888;
-    margin: 5px 0 0 0;
-}
-</style>
-<div class="dp-header-text">
-    <div class="dp-logo-text">DP WORLD</div>
-    <div class="dp-tagline">Maritime Financial Intelligence</div>
-</div>
-""", unsafe_allow_html=True)
+# Streamlit UI with DP World Branding and Logo at top left
+col_logo, col_text = st.columns([0.2, 0.8])
 
-# Display logo at top center
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    st.image("dp-world-vector-logo-2021-1.png", width=150)
+with col_logo:
+    st.image("dp-world-vector-logo-2021-1.png", width=100)
+
+with col_text:
+    st.markdown("""
+    <style>
+    .dp-header-text {
+        padding: 10px 0 10px 20px;
+        border-bottom: 3px solid #00d084;
+    }
+    .dp-logo-text {
+        font-size: 28px;
+        font-weight: bold;
+        color: #00d084;
+        margin: 0;
+    }
+    .dp-tagline {
+        font-size: 13px;
+        color: #888;
+        margin: 5px 0 0 0;
+    }
+    </style>
+    <div class="dp-header-text">
+        <div class="dp-logo-text">DP WORLD</div>
+        <div class="dp-tagline">Maritime Financial Intelligence</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.title("Financial Intelligence Dashboard")
 st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
