@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import requests
 from difflib import get_close_matches
 import re
+import time
 
 load_dotenv()
 
@@ -148,7 +149,7 @@ CRITICAL RULES:
         return None
 
 def get_narrative(question, data):
-    """Generate narrative analysis using LLM"""
+    """Generate narrative analysis using LLM with rate limiting"""
     if not data:
         return None
 
@@ -156,6 +157,17 @@ def get_narrative(question, data):
         return None
 
     try:
+        # Rate limiting - wait between LLM calls to avoid hitting rate limits
+        if "last_llm_call" not in st.session_state:
+            st.session_state.last_llm_call = 0
+
+        current_time = time.time()
+        time_since_last = current_time - st.session_state.last_llm_call
+        if time_since_last < 3:  # 3 second cooldown between requests
+            st.session_state.message = f"Rate limiting: waiting {3 - int(time_since_last)} seconds..."
+            time.sleep(3 - time_since_last)
+        st.session_state.last_llm_call = time.time()
+
         summary = json.dumps(data[:5], indent=2)  # Show first 5 results
 
         payload = {
@@ -189,6 +201,9 @@ Keep it concise and focused on business insights."""
             result = resp.json()
             if "choices" in result and len(result["choices"]) > 0:
                 return result["choices"][0]["message"]["content"].strip()
+        elif resp.status_code == 429:
+            st.warning("Rate limit reached. Please wait a moment before trying again.")
+            return None
         else:
             st.warning(f"LLM API error: {resp.status_code}")
         return None
