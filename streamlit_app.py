@@ -297,7 +297,7 @@ ORDER BY u.unit_name, total DESC"""
     if not sql:
         sql = get_llm_sql(question, unit)
         if not sql:
-            return None, None
+            return None, None, None
 
     # Fix month format
     sql = fix_month_in_sql(sql)
@@ -305,11 +305,11 @@ ORDER BY u.unit_name, total DESC"""
     # Execute
     result = query_db(sql)
     if not result['ok']:
-        return None, None
+        return None, None, None
 
     data = result['data']
     narrative = get_narrative(question, data)
-    return data, narrative
+    return data, narrative, sql
 
 # Streamlit UI
 st.title("Financial Intelligence Dashboard")
@@ -404,19 +404,30 @@ if send_btn or (st.session_state.get("query") and user_query):
         st.markdown(f"**Query:** {query_to_run}")
 
         with st.spinner("Processing your query..."):
-            data, narrative = execute_query(query_to_run, unit)
+            data, narrative, sql = execute_query(query_to_run, unit)
 
-        if data and narrative:
+        if data:
             st.success(f"Found {len(data)} result(s)")
 
+            # Summary section with narrative
             st.markdown("### Summary")
-            st.markdown(narrative)
+            st.markdown(narrative if narrative else "Query executed successfully.")
 
+            # Data section
             st.markdown("### Data")
             st.dataframe(data, use_container_width=True, hide_index=True)
-        elif data:
-            st.success(f"Found {len(data)} result(s)")
-            st.markdown("### Data")
-            st.dataframe(data, use_container_width=True, hide_index=True)
+
+            # Show SQL query in expander
+            if sql:
+                with st.expander("View SQL Query"):
+                    st.code(sql, language="sql")
+
+            # Show metadata
+            with st.expander("Metadata"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Records", len(data))
+                with col2:
+                    st.metric("Unit", unit)
         else:
             st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
