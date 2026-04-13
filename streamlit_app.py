@@ -598,11 +598,7 @@ if send_btn or (st.session_state.get("query") and user_query):
 
             # Show metadata
             with st.expander("Metadata"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Records", len(data))
-                with col2:
-                    st.metric("Unit", unit)
+                st.metric("Records", len(data))
         else:
             st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
 
