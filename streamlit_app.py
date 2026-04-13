@@ -514,7 +514,7 @@ st.markdown("""
 }
 </style>
 <div class="dp-header">
-    <img src="dpworldlogo.png" alt="DP World" class="dp-logo-img">
+    <img src="dp-world-vector-logo-2021-1.png" alt="DP World" class="dp-logo-img">
     <div class="dp-tagline">Maritime Financial Intelligence</div>
 </div>
 """, unsafe_allow_html=True)
