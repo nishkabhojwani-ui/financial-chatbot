@@ -216,7 +216,7 @@ MARGIN HANDLING (IMPORTANT):
 - Margin categories: EBITDA Margin, EBIT Margin, PAT Margin
 - These are decimal ratios (e.g., 0.15 means 15%)
 - In queries, multiply margins by 100 for display: ROUND(mf.actual * 100, 2) as margin_pct
-- NEVER aggregate margins with USD/currency line items (don't SUM them together)
+- NEVER aggregate margins with RC/currency line items (don't SUM them together)
 - ALWAYS exclude rows where ABS(margin) > 10 (these are data anomalies)
 - When querying margins, use: WHERE ABS(mf.actual) <= 10 AND pc.category_name IN ('EBITDA Margin', 'EBIT Margin', 'PAT Margin')
 
@@ -326,7 +326,7 @@ CRITICAL FORMATTING RULES - YOU MUST FOLLOW EXACTLY:
 - Put space after EVERY comma: "1,000, the result" NOT "1,000,the"
 - Put space after EVERY period: "result. The next" NOT "result.The"
 - Put space BETWEEN all words: "while the" NOT "whilethe"
-- Use USD currency: "USD 5,234" or "$5,234"
+- Use RC currency: "RC 5,234" or "$5,234"
 - NEVER concatenate words together
 - Write numbers clearly: "5,234" with comma separator
 - Always: "and the company" NOT "andthecompany"
@@ -335,7 +335,7 @@ CRITICAL FORMATTING RULES - YOU MUST FOLLOW EXACTLY:
 Data Summary: {summary}
 Question Asked: {question}
 
-Write 2-3 paragraphs with PROPER SPACING and USD currency.
+Write 2-3 paragraphs with PROPER SPACING and RC currency.
 Note: We only have financial data for 2024. No other years are available."""
             }],
             "temperature": 0.7,
