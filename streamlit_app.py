@@ -150,6 +150,8 @@ FOREIGN KEYS:
 IMPORTANT COLUMN NOTES:
 - month is TEXT: 'January', 'February', ... 'December' (NEVER use numbers 1, 2, 3)
 - actual and budget are COLUMNS for variance analysis (not categories)
+- year is INTEGER (2024 is current year; "this year" = WHERE year = 2024)
+- "last year" comparisons use the last_year column or year = 2023
 
 AVAILABLE CATEGORIES (ALL {len(ALL_CATEGORIES)} of them):
 {all_categories_str}
@@ -199,11 +201,22 @@ JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries' AND mf.actual != 0
 ORDER BY u.unit_name, v.vessel_name, mf.year, mf.month
 
-FILTER INSTRUCTIONS:
-- "non-zero" or "non negative" = WHERE mf.actual != 0 or WHERE mf.actual > 0
+PATTERN 6 - MONTHLY BREAKDOWN (when user asks for "by month", "monthly", "trend", "this year", "breakdown by month"):
+SELECT mf.month, pc.category_name, SUM(mf.actual) as actual, SUM(mf.budget) as budget
+FROM monthly_financials mf
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'EBITDA' AND mf.year = 2024
+GROUP BY mf.month, pc.category_name
+ORDER BY CASE WHEN mf.month='January' THEN 1 WHEN mf.month='February' THEN 2 WHEN mf.month='March' THEN 3 WHEN mf.month='April' THEN 4 WHEN mf.month='May' THEN 5 WHEN mf.month='June' THEN 6 WHEN mf.month='July' THEN 7 WHEN mf.month='August' THEN 8 WHEN mf.month='September' THEN 9 WHEN mf.month='October' THEN 10 WHEN mf.month='November' THEN 11 ELSE 12 END
+
+FILTER & QUERY TYPE INSTRUCTIONS:
+- "non-zero" or "non-negative" = WHERE mf.actual != 0 or WHERE mf.actual > 0
 - "details", "breakdown", "show all", "list" = use PATTERN 5 (detail rows, no GROUP BY)
+- "by month", "monthly", "trend", "this year" = use PATTERN 6 (monthly breakdown with year filter)
 - "compare", "vs", "variance" = use variance pattern with GROUP BY
 - "total", "sum", "how much" = use aggregate pattern with SUM() and GROUP BY
+- "tell me about" = provide monthly breakdown + totals to show trends and context
+- Current year = 2024. Use WHERE year = 2024 for "this year"
 
 CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
 Task: "{question}"
