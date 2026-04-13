@@ -150,8 +150,9 @@ FOREIGN KEYS:
 IMPORTANT COLUMN NOTES:
 - month is TEXT: 'January', 'February', ... 'December' (NEVER use numbers 1, 2, 3)
 - actual and budget are COLUMNS for variance analysis (not categories)
-- year is INTEGER (2024 is current year; "this year" = WHERE year = 2024)
-- "last year" comparisons use the last_year column or year = 2023
+- year is INTEGER - IMPORTANT: Database only contains 2024 data
+- When user asks for "this year" or current year data, use 2024 (that's all we have)
+- If user asks about 2026 or current year, explain we only have 2024 financial data available
 
 AVAILABLE CATEGORIES (ALL {len(ALL_CATEGORIES)} of them):
 {all_categories_str}
@@ -216,7 +217,8 @@ FILTER & QUERY TYPE INSTRUCTIONS:
 - "compare", "vs", "variance" = use variance pattern with GROUP BY
 - "total", "sum", "how much" = use aggregate pattern with SUM() and GROUP BY
 - "tell me about" = provide monthly breakdown + totals to show trends and context
-- Current year = 2024. Use WHERE year = 2024 for "this year"
+- Database contains only 2024 data. Always use WHERE year = 2024
+- If user asks about current year (2026) or future years, note that only 2024 data is available
 
 CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
 Task: "{question}"
