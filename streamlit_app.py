@@ -353,94 +353,78 @@ Note: We only have financial data for 2024. No other years are available."""
         return None
 
 def generate_chart(question, data):
-    """Generate chart using LLM suggestion"""
-    if not data or len(data) < 2 or not API_KEY:
+    """Generate chart using simple heuristics - no LLM required"""
+    if not data or len(data) < 1:
         return None
 
     try:
-        df = pd.DataFrame(data)
+        import plotly.express as px
 
-        # Get column info
+        df = pd.DataFrame(data)
         cols = list(df.columns)
-        numeric_cols = [c for c in cols if df[c].dtype in ['int64', 'float64', 'float32']]
-        text_cols = [c for c in cols if df[c].dtype == 'object']
+
+        # Find numeric and text columns
+        numeric_cols = []
+        text_cols = []
+        month_col = None
+
+        for col in cols:
+            try:
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    numeric_cols.append(col)
+                elif pd.api.types.is_object_dtype(df[col]):
+                    text_cols.append(col)
+                    # Check if this is a month column
+                    if 'month' in col.lower():
+                        month_col = col
+            except:
+                pass
 
         if not numeric_cols:
             return None
 
-        # Ask LLM what chart type would be best
-        prompt = f"""Based on this question and data structure, what type of chart?
-
-Question: {question}
-Columns: {cols}
-Has month column: {'month' in ' '.join(cols).lower()}
-
-Answer with ONLY one word: 'line' OR 'bar' OR 'scatter'"""
-
-        resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "HTTP-Referer": "http://localhost:5001",
-                "X-Title": "DP World Maritime",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "anthropic/claude-3-haiku",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": 10
-            },
-            timeout=30
-        )
-
-        if resp.status_code != 200:
-            return None
-
-        chart_type = resp.json()["choices"][0]["message"]["content"].strip().lower()
-
-        # Create the chart based on LLM suggestion
-        fig = go.Figure()
-        x_col = text_cols[0] if text_cols else cols[0]
+        # Determine chart type based on data structure
+        x_col = month_col if month_col else (text_cols[0] if text_cols else cols[0])
         y_col = numeric_cols[0]
 
-        if 'line' in chart_type or 'month' in ' '.join(cols).lower():
-            # Line chart for trends
-            if 'month' in ' '.join(cols).lower():
-                month_col = [c for c in cols if 'month' in c.lower()][0]
-                month_order = ['January', 'February', 'March', 'April', 'May', 'June',
-                              'July', 'August', 'September', 'October', 'November', 'December']
-                df['_sort'] = df[month_col].apply(lambda x: month_order.index(str(x)) if str(x) in month_order else 0)
-                df = df.sort_values('_sort')
-                x_col = month_col
+        # Create chart
+        if month_col:
+            # Line chart for monthly trends
+            month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December']
+            df_sorted = df.copy()
+            df_sorted['_month_sort'] = df_sorted[month_col].apply(
+                lambda x: month_order.index(str(x)) if str(x) in month_order else 0
+            )
+            df_sorted = df_sorted.sort_values('_month_sort')
 
-            fig.add_trace(go.Scatter(
-                x=df[x_col],
-                y=df[y_col],
-                mode='lines+markers',
-                line=dict(color='#00d084', width=3),
-                marker=dict(size=8)
-            ))
-            title = 'Trend'
+            fig = px.line(df_sorted, x=month_col, y=y_col, markers=True,
+                         title='Monthly Trend',
+                         labels={y_col: y_col, month_col: 'Month'})
+        elif len(text_cols) > 0 and len(numeric_cols) > 0:
+            # Bar chart for categorical comparisons
+            fig = px.bar(df, x=x_col, y=y_col,
+                        title='Comparison',
+                        labels={y_col: y_col, x_col: x_col})
         else:
-            # Bar chart for comparisons
-            fig.add_trace(go.Bar(
-                x=df[x_col],
-                y=df[y_col],
-                marker=dict(color='#00d084')
-            ))
-            title = 'Comparison'
+            # Scatter plot for numeric data
+            fig = px.scatter(df, x=cols[0], y=y_col,
+                           title='Data Plot',
+                           labels={y_col: y_col})
 
+        # Update colors to DP World green
+        fig.update_traces(marker=dict(color='#00d084'), line=dict(color='#00d084'))
         fig.update_layout(
-            title=title,
-            xaxis_title=str(x_col),
-            yaxis_title=str(y_col),
             template='plotly_light',
-            height=400
+            height=400,
+            font=dict(family="sans-serif"),
+            hovermode='x unified'
         )
+
         return fig
 
     except Exception as e:
+        st.error(f"Chart error: {str(e)}")
         return None
 
 def execute_query(question, unit='Africa'):
