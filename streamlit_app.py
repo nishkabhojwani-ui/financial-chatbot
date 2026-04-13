@@ -413,7 +413,11 @@ def generate_chart(question, data):
                            labels={y_col: y_col})
 
         # Update colors to DP World green
-        fig.update_traces(marker=dict(color='#00d084'), line=dict(color='#00d084'))
+        fig.update_traces(marker=dict(color='#00d084'))
+        for trace in fig.data:
+            if hasattr(trace, 'line'):
+                trace.line.color = '#00d084'
+
         fig.update_layout(
             template='plotly_white',
             height=400,
