@@ -355,75 +355,88 @@ def generate_chart(question, data):
         df = pd.DataFrame(data)
 
         # Detect query type
-        is_trend = any(x in msg for x in ['trend', 'month', 'monthly', 'by month', 'over time', 'progression'])
+        is_trend = any(x in msg for x in ['trend', 'month', 'monthly', 'by month', 'over time', 'progression', 'revenue'])
         is_comparison = any(x in msg for x in ['compare', 'vs', 'between', 'breakdown', 'by vessel', 'by unit'])
 
+        # Find month column (could be 'month', 'mf.month', etc.)
+        month_col = None
+        numeric_cols_list = df.select_dtypes(include=['number']).columns.tolist()
+
+        for col in df.columns:
+            if 'month' in col.lower():
+                month_col = col
+                break
+
         # For trend queries - use line chart if month column exists
-        if is_trend and 'month' in df.columns:
-            month_order = ['January', 'February', 'March', 'April', 'May', 'June',
-                          'July', 'August', 'September', 'October', 'November', 'December']
-            df['month_num'] = df['month'].apply(lambda x: month_order.index(x) if x in month_order else 0)
-            df_sorted = df.sort_values('month_num')
+        if is_trend and month_col:
+            try:
+                month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December']
+                df['month_num'] = df[month_col].apply(lambda x: month_order.index(str(x)) if str(x) in month_order else 0)
+                df_sorted = df.sort_values('month_num')
 
-            fig = go.Figure()
+                fig = go.Figure()
 
-            # Get numeric columns for plotting
-            numeric_cols = df_sorted.select_dtypes(include=['number']).columns
-            numeric_cols = [col for col in numeric_cols if col != 'month_num']
+                # Get numeric columns for plotting (excluding month_num)
+                numeric_cols = [col for col in numeric_cols_list if col != 'month_num' and col != month_col]
 
-            if numeric_cols:
-                for col in numeric_cols[:1]:  # Plot first numeric column
+                if numeric_cols:
+                    col_to_plot = numeric_cols[0]
                     fig.add_trace(go.Scatter(
-                        x=df_sorted['month'],
-                        y=df_sorted[col],
+                        x=df_sorted[month_col],
+                        y=df_sorted[col_to_plot],
                         mode='lines+markers',
-                        name=col,
+                        name=col_to_plot,
                         line=dict(color='#00d084', width=3),
                         marker=dict(size=8)
                     ))
 
-                fig.update_layout(
-                    title='Monthly Trend',
-                    xaxis_title='Month',
-                    yaxis_title=numeric_cols[0],
-                    template='plotly_light',
-                    height=400,
-                    hovermode='x unified'
-                )
-                return fig
+                    fig.update_layout(
+                        title='Monthly Trend',
+                        xaxis_title='Month',
+                        yaxis_title=col_to_plot,
+                        template='plotly_light',
+                        height=400,
+                        hovermode='x unified'
+                    )
+                    return fig
+            except Exception as e:
+                pass
 
         # For comparison queries - use bar chart
-        elif is_comparison:
-            # Find key columns for comparison
-            numeric_cols = df.select_dtypes(include=['number']).columns
-            numeric_cols = [col for col in numeric_cols if col != 'month_num']
+        if is_comparison:
+            try:
+                # Find grouping column (vessel, unit, or category)
+                group_col = None
+                for col in df.columns:
+                    col_lower = col.lower()
+                    if any(x in col_lower for x in ['vessel', 'unit', 'category']):
+                        group_col = col
+                        break
 
-            # Get grouping column (vessel, unit, or category)
-            group_col = None
-            for col in ['vessel_name', 'unit_name', 'category_name', 'v.vessel_name', 'u.unit_name', 'pc.category_name']:
-                if col in df.columns:
-                    group_col = col
-                    break
+                numeric_cols = [col for col in numeric_cols_list if col != month_col and col != 'month_num']
 
-            if group_col and numeric_cols:
-                fig = go.Figure()
+                if group_col and numeric_cols:
+                    fig = go.Figure()
 
-                fig.add_trace(go.Bar(
-                    x=df[group_col],
-                    y=df[numeric_cols[0]],
-                    name=numeric_cols[0],
-                    marker=dict(color='#00d084')
-                ))
+                    fig.add_trace(go.Bar(
+                        x=df[group_col],
+                        y=df[numeric_cols[0]],
+                        name=numeric_cols[0],
+                        marker=dict(color='#00d084')
+                    ))
 
-                fig.update_layout(
-                    title='Comparison',
-                    xaxis_title=group_col,
-                    yaxis_title=numeric_cols[0],
-                    template='plotly_light',
-                    height=400,
-                    showlegend=False
-                )
-                return fig
+                    fig.update_layout(
+                        title='Comparison',
+                        xaxis_title=group_col,
+                        yaxis_title=numeric_cols[0],
+                        template='plotly_light',
+                        height=400,
+                        showlegend=False
+                    )
+                    return fig
+            except Exception as e:
+                pass
 
         return None
 
