@@ -353,35 +353,29 @@ Note: We only have financial data for 2024. No other years are available."""
         return None
 
 def generate_chart(question, data):
-    """Use LLM to generate Plotly chart code"""
+    """Generate chart using LLM suggestion"""
     if not data or len(data) < 2 or not API_KEY:
         return None
 
     try:
-        # Ask LLM to generate chart code
-        df_info = pd.DataFrame(data)
-        columns_info = f"Columns: {', '.join(df_info.columns)}"
-        sample_data = df_info.head(3).to_string()
+        df = pd.DataFrame(data)
 
-        prompt = f"""You are a data visualization expert. Generate ONLY Plotly Python code to create an appropriate chart.
+        # Get column info
+        cols = list(df.columns)
+        numeric_cols = [c for c in cols if df[c].dtype in ['int64', 'float64', 'float32']]
+        text_cols = [c for c in cols if df[c].dtype == 'object']
+
+        if not numeric_cols:
+            return None
+
+        # Ask LLM what chart type would be best
+        prompt = f"""Based on this question and data structure, what type of chart?
 
 Question: {question}
-Data columns: {', '.join(df_info.columns)}
-Data shape: {df_info.shape}
+Columns: {cols}
+Has month column: {'month' in ' '.join(cols).lower()}
 
-Sample data:
-{sample_data}
-
-Generate ONLY valid Python code that:
-1. Uses: import plotly.graph_objects as go
-2. Creates a figure with go.Figure()
-3. Uses color '#00d084' (DP World green)
-4. Sets template='plotly_light'
-5. Sets height=400
-6. Returns a proper chart for the question
-
-IMPORTANT: Output ONLY the Python code. No explanations. No markdown. Just executable code.
-The variable 'data' is already a list of dictionaries with the above columns."""
+Answer with ONLY one word: 'line' OR 'bar' OR 'scatter'"""
 
         resp = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -395,26 +389,59 @@ The variable 'data' is already a list of dictionaries with the above columns."""
                 "model": "anthropic/claude-3-haiku",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
-                "max_tokens": 800
+                "max_tokens": 10
             },
             timeout=30
         )
 
-        if resp.status_code == 200:
-            code = resp.json()["choices"][0]["message"]["content"].strip()
+        if resp.status_code != 200:
+            return None
 
-            # Execute the generated code
-            local_vars = {'go': go, 'pd': pd, 'data': data}
-            exec(code, local_vars)
+        chart_type = resp.json()["choices"][0]["message"]["content"].strip().lower()
 
-            # Get the figure object
-            if 'fig' in local_vars:
-                return local_vars['fig']
+        # Create the chart based on LLM suggestion
+        fig = go.Figure()
+        x_col = text_cols[0] if text_cols else cols[0]
+        y_col = numeric_cols[0]
+
+        if 'line' in chart_type or 'month' in ' '.join(cols).lower():
+            # Line chart for trends
+            if 'month' in ' '.join(cols).lower():
+                month_col = [c for c in cols if 'month' in c.lower()][0]
+                month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December']
+                df['_sort'] = df[month_col].apply(lambda x: month_order.index(str(x)) if str(x) in month_order else 0)
+                df = df.sort_values('_sort')
+                x_col = month_col
+
+            fig.add_trace(go.Scatter(
+                x=df[x_col],
+                y=df[y_col],
+                mode='lines+markers',
+                line=dict(color='#00d084', width=3),
+                marker=dict(size=8)
+            ))
+            title = 'Trend'
+        else:
+            # Bar chart for comparisons
+            fig.add_trace(go.Bar(
+                x=df[x_col],
+                y=df[y_col],
+                marker=dict(color='#00d084')
+            ))
+            title = 'Comparison'
+
+        fig.update_layout(
+            title=title,
+            xaxis_title=str(x_col),
+            yaxis_title=str(y_col),
+            template='plotly_light',
+            height=400
+        )
+        return fig
 
     except Exception as e:
-        pass
-
-    return None
+        return None
 
 def execute_query(question, unit='Africa'):
     """Execute query and return results - LLM analyzes and routes"""
