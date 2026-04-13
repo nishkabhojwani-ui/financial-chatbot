@@ -212,6 +212,14 @@ WHERE pc.category_name = 'EBITDA' AND mf.year = 2024
 GROUP BY mf.month, pc.category_name
 ORDER BY CASE WHEN mf.month='January' THEN 1 WHEN mf.month='February' THEN 2 WHEN mf.month='March' THEN 3 WHEN mf.month='April' THEN 4 WHEN mf.month='May' THEN 5 WHEN mf.month='June' THEN 6 WHEN mf.month='July' THEN 7 WHEN mf.month='August' THEN 8 WHEN mf.month='September' THEN 9 WHEN mf.month='October' THEN 10 WHEN mf.month='November' THEN 11 ELSE 12 END
 
+MARGIN HANDLING (IMPORTANT):
+- Margin categories: EBITDA Margin, EBIT Margin, PAT Margin
+- These are decimal ratios (e.g., 0.15 means 15%)
+- In queries, multiply margins by 100 for display: ROUND(mf.actual * 100, 2) as margin_pct
+- NEVER aggregate margins with USD/currency line items (don't SUM them together)
+- ALWAYS exclude rows where ABS(margin) > 10 (these are data anomalies)
+- When querying margins, use: WHERE ABS(mf.actual) <= 10 AND pc.category_name IN ('EBITDA Margin', 'EBIT Margin', 'PAT Margin')
+
 FILTER & QUERY TYPE INSTRUCTIONS:
 - "non-zero" or "non-negative" = WHERE mf.actual != 0 or WHERE mf.actual > 0
 - "details", "breakdown", "show all", "list" = use PATTERN 5 (detail rows, no GROUP BY)
