@@ -314,17 +314,20 @@ FOCUS ON INSIGHTS, NOT JUST DATA:
 - Explain business implications
 - Identify opportunities or concerns
 
-FORMATTING RULES - MUST FOLLOW:
-- ALWAYS put a space after commas and periods
-- ALWAYS put spaces between words
-- Do NOT repeat units (e.g., just say "5,234" not "5,234 million" if context is clear)
-- Example WRONG: "whilethebudgetwas0"
-- Example RIGHT: "while the budget was 0"
+CRITICAL FORMATTING RULES - YOU MUST FOLLOW EXACTLY:
+- Put space after EVERY comma: "1,000, the result" NOT "1,000,the"
+- Put space after EVERY period: "result. The next" NOT "result.The"
+- Put space BETWEEN all words: "while the" NOT "whilethe"
+- Use USD currency: "USD 5,234" or "$5,234"
+- NEVER concatenate words together
+- Write numbers clearly: "5,234" with comma separator
+- Always: "and the company" NOT "andthecompany"
+- Always: "from month to month" NOT "frommonthtomonth"
 
 Data Summary: {summary}
 Question Asked: {question}
 
-Write 2-3 paragraphs with business insights and implications.
+Write 2-3 paragraphs with PROPER SPACING and USD currency.
 Note: We only have financial data for 2024. No other years are available."""
             }],
             "temperature": 0.7,
@@ -730,9 +733,24 @@ if send_btn or (st.session_state.get("query") and user_query):
             st.markdown("### Summary")
             if narrative:
                 # Clean up narrative text - fix spacing issues
-                clean_narrative = narrative.replace("million,", "million, ").replace("million.", "million. ")
-                # Fix concatenated words like "whilethebudget" -> "while the budget"
+                clean_narrative = narrative
+
+                # Fix common spacing issues after punctuation
+                clean_narrative = re.sub(r'\.([A-Z])', r'. \1', clean_narrative)  # .The -> . The
+                clean_narrative = re.sub(r',([A-Za-z])', r', \1', clean_narrative)  # ,the -> , the
+
+                # Fix concatenated lowercase words (e.g., "frommonth" -> "from month")
+                clean_narrative = re.sub(r'([a-z])([a-z]{3,}(?:from|to|and|the|is|was|has|while|which|during|month|year|between))',
+                                        lambda m: f"{m.group(1)} {m.group(2)}" if m.group(2).lower() in ['from', 'to', 'and', 'the', 'is', 'was', 'has', 'while', 'which', 'during', 'month', 'year', 'between'] else m.group(0),
+                                        clean_narrative, flags=re.IGNORECASE)
+
+                # Fix lowercase to uppercase transitions (e.g., "whileThe" -> "while The")
                 clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
+
+                # Fix numbers concatenated with words
+                clean_narrative = re.sub(r'(\d)([a-z])', r'\1 \2', clean_narrative)  # 5the -> 5 the
+                clean_narrative = re.sub(r'([a-z])(\d)', r'\1 \2', clean_narrative)  # the5 -> the 5
+
                 st.markdown(clean_narrative)
             else:
                 st.markdown("Query executed successfully.")
