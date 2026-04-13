@@ -363,6 +363,10 @@ def generate_chart(question, data):
         df = pd.DataFrame(data)
         cols = list(df.columns)
 
+        # Skip if only 1 row (not enough for meaningful visualization)
+        if len(df) < 2:
+            return None
+
         # Find numeric and text columns
         numeric_cols = []
         text_cols = []
@@ -379,6 +383,11 @@ def generate_chart(question, data):
                         month_col = col
             except:
                 pass
+
+        # If we only have 1 numeric column and it's constant, skip chart
+        if len(numeric_cols) == 1:
+            if df[numeric_cols[0]].nunique() < 2:
+                return None
 
         if not numeric_cols:
             return None
@@ -449,7 +458,8 @@ def generate_chart(question, data):
         return fig
 
     except Exception as e:
-        st.error(f"Chart error: {str(e)}")
+        # Silently return None for charts that can't be generated
+        # (prevents showing error messages for valid data that just doesn't chart well)
         return None
 
 def execute_query(question, unit='Africa'):
