@@ -415,7 +415,7 @@ def generate_chart(question, data):
         # Update colors to DP World green
         fig.update_traces(marker=dict(color='#00d084'), line=dict(color='#00d084'))
         fig.update_layout(
-            template='plotly_light',
+            template='plotly_white',
             height=400,
             font=dict(family="sans-serif"),
             hovermode='x unified'
