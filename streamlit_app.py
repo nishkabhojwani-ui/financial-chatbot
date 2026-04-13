@@ -354,7 +354,16 @@ Note: We only have financial data for 2024. No other years are available."""
 
 def generate_chart(question, data):
     """Generate chart using LLM suggestion"""
-    if not data or len(data) < 2 or not API_KEY:
+    if not data:
+        st.info("No data available for chart.")
+        return None
+
+    if len(data) < 1:
+        st.info("Not enough data rows for chart.")
+        return None
+
+    if not API_KEY:
+        st.warning("API key not configured for chart generation.")
         return None
 
     try:
@@ -362,10 +371,12 @@ def generate_chart(question, data):
 
         # Get column info
         cols = list(df.columns)
-        numeric_cols = [c for c in cols if df[c].dtype in ['int64', 'float64', 'float32']]
-        text_cols = [c for c in cols if df[c].dtype == 'object']
+        # Properly detect numeric columns
+        numeric_cols = [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
+        text_cols = [c for c in cols if pd.api.types.is_object_dtype(df[c])]
 
         if not numeric_cols:
+            st.info("No numeric columns found for chart.")
             return None
 
         # Ask LLM what chart type would be best
@@ -395,6 +406,7 @@ Answer with ONLY one word: 'line' OR 'bar' OR 'scatter'"""
         )
 
         if resp.status_code != 200:
+            st.warning(f"Chart API error: {resp.status_code}")
             return None
 
         chart_type = resp.json()["choices"][0]["message"]["content"].strip().lower()
@@ -404,29 +416,37 @@ Answer with ONLY one word: 'line' OR 'bar' OR 'scatter'"""
         x_col = text_cols[0] if text_cols else cols[0]
         y_col = numeric_cols[0]
 
-        if 'line' in chart_type or 'month' in ' '.join(cols).lower():
+        # Check for month column first
+        has_month = any('month' in c.lower() for c in cols)
+
+        if 'line' in chart_type or has_month:
             # Line chart for trends
-            if 'month' in ' '.join(cols).lower():
+            if has_month:
                 month_col = [c for c in cols if 'month' in c.lower()][0]
                 month_order = ['January', 'February', 'March', 'April', 'May', 'June',
                               'July', 'August', 'September', 'October', 'November', 'December']
-                df['_sort'] = df[month_col].apply(lambda x: month_order.index(str(x)) if str(x) in month_order else 0)
-                df = df.sort_values('_sort')
+                df_copy = df.copy()
+                df_copy['_sort'] = df_copy[month_col].apply(lambda x: month_order.index(str(x)) if str(x) in month_order else 0)
+                df_copy = df_copy.sort_values('_sort')
                 x_col = month_col
+            else:
+                df_copy = df.copy()
 
             fig.add_trace(go.Scatter(
-                x=df[x_col],
-                y=df[y_col],
+                x=df_copy[x_col],
+                y=df_copy[y_col],
                 mode='lines+markers',
+                name=str(y_col),
                 line=dict(color='#00d084', width=3),
                 marker=dict(size=8)
             ))
-            title = 'Trend'
+            title = 'Monthly Trend' if has_month else 'Trend'
         else:
             # Bar chart for comparisons
             fig.add_trace(go.Bar(
                 x=df[x_col],
                 y=df[y_col],
+                name=str(y_col),
                 marker=dict(color='#00d084')
             ))
             title = 'Comparison'
@@ -436,11 +456,15 @@ Answer with ONLY one word: 'line' OR 'bar' OR 'scatter'"""
             xaxis_title=str(x_col),
             yaxis_title=str(y_col),
             template='plotly_light',
-            height=400
+            height=400,
+            hovermode='x unified'
         )
         return fig
 
     except Exception as e:
+        st.error(f"Chart error: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
         return None
 
 def execute_query(question, unit='Africa'):
@@ -718,6 +742,8 @@ if send_btn or (st.session_state.get("query") and user_query):
             if chart:
                 st.markdown("### Visualization")
                 st.plotly_chart(chart, use_container_width=True)
+            else:
+                st.info("Chart generation not available for this query.")
 
             # Data section
             st.markdown("### Data")
