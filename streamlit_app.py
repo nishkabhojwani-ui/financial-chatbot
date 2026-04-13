@@ -12,6 +12,8 @@ import requests
 from difflib import get_close_matches
 import re
 import time
+import plotly.graph_objects as go
+import pandas as pd
 
 load_dotenv()
 
@@ -343,6 +345,91 @@ Keep it concise and focused on business insights."""
         st.warning(f"Could not generate narrative: {str(e)}")
         return None
 
+def generate_chart(question, data):
+    """Generate appropriate chart for trend or comparison queries"""
+    if not data or len(data) < 2:
+        return None
+
+    try:
+        msg = question.lower()
+        df = pd.DataFrame(data)
+
+        # Detect query type
+        is_trend = any(x in msg for x in ['trend', 'month', 'monthly', 'by month', 'over time', 'progression'])
+        is_comparison = any(x in msg for x in ['compare', 'vs', 'between', 'breakdown', 'by vessel', 'by unit'])
+
+        # For trend queries - use line chart if month column exists
+        if is_trend and 'month' in df.columns:
+            month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December']
+            df['month_num'] = df['month'].apply(lambda x: month_order.index(x) if x in month_order else 0)
+            df_sorted = df.sort_values('month_num')
+
+            fig = go.Figure()
+
+            # Get numeric columns for plotting
+            numeric_cols = df_sorted.select_dtypes(include=['number']).columns
+            numeric_cols = [col for col in numeric_cols if col != 'month_num']
+
+            if numeric_cols:
+                for col in numeric_cols[:1]:  # Plot first numeric column
+                    fig.add_trace(go.Scatter(
+                        x=df_sorted['month'],
+                        y=df_sorted[col],
+                        mode='lines+markers',
+                        name=col,
+                        line=dict(color='#00d084', width=3),
+                        marker=dict(size=8)
+                    ))
+
+                fig.update_layout(
+                    title='Monthly Trend',
+                    xaxis_title='Month',
+                    yaxis_title=numeric_cols[0],
+                    template='plotly_light',
+                    height=400,
+                    hovermode='x unified'
+                )
+                return fig
+
+        # For comparison queries - use bar chart
+        elif is_comparison:
+            # Find key columns for comparison
+            numeric_cols = df.select_dtypes(include=['number']).columns
+            numeric_cols = [col for col in numeric_cols if col != 'month_num']
+
+            # Get grouping column (vessel, unit, or category)
+            group_col = None
+            for col in ['vessel_name', 'unit_name', 'category_name', 'v.vessel_name', 'u.unit_name', 'pc.category_name']:
+                if col in df.columns:
+                    group_col = col
+                    break
+
+            if group_col and numeric_cols:
+                fig = go.Figure()
+
+                fig.add_trace(go.Bar(
+                    x=df[group_col],
+                    y=df[numeric_cols[0]],
+                    name=numeric_cols[0],
+                    marker=dict(color='#00d084')
+                ))
+
+                fig.update_layout(
+                    title='Comparison',
+                    xaxis_title=group_col,
+                    yaxis_title=numeric_cols[0],
+                    template='plotly_light',
+                    height=400,
+                    showlegend=False
+                )
+                return fig
+
+        return None
+
+    except Exception as e:
+        return None
+
 def execute_query(question, unit='Africa'):
     """Execute query and return results - LLM analyzes and routes"""
     msg = question.lower()
@@ -605,6 +692,12 @@ if send_btn or (st.session_state.get("query") and user_query):
             # Summary section with narrative
             st.markdown("### Summary")
             st.markdown(narrative if narrative else "Query executed successfully.")
+
+            # Chart section - for trend and comparison queries
+            chart = generate_chart(query_to_run, data)
+            if chart:
+                st.markdown("### Visualization")
+                st.plotly_chart(chart, use_container_width=True)
 
             # Data section
             st.markdown("### Data")
