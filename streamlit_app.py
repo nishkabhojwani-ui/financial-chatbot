@@ -305,10 +305,12 @@ def get_narrative(question, data):
                 "role": "user",
                 "content": f"""Analyze this DP World Maritime Financial data and provide a brief business summary (2-3 paragraphs):
 
+IMPORTANT: This data is from 2024. Mention that it is 2024 financial data in your summary.
+
 Question: {question}
 Data Sample: {summary}
 
-Keep it concise and focused on business insights."""
+Keep it concise and focused on business insights. Always note that this is 2024 data."""
             }],
             "temperature": 0.7,
             "max_tokens": 400
