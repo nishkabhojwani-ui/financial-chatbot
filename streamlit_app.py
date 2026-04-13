@@ -462,15 +462,12 @@ ORDER BY u.unit_name, total DESC"""
     narrative = get_narrative(question, data)
     return data, narrative, sql
 
-# Streamlit UI with DP World Branding
+# Streamlit UI with DP World Branding and Logo
 st.markdown("""
 <style>
-.dp-header {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 10px;
-    padding: 15px 0;
+.dp-header-text {
+    text-align: center;
+    padding: 10px 0;
     border-bottom: 3px solid #00d084;
 }
 .dp-logo-text {
@@ -485,13 +482,16 @@ st.markdown("""
     margin: 5px 0 0 0;
 }
 </style>
-<div class="dp-header">
-    <div>
-        <div class="dp-logo-text">DP WORLD</div>
-        <div class="dp-tagline">Maritime Financial Intelligence</div>
-    </div>
+<div class="dp-header-text">
+    <div class="dp-logo-text">DP WORLD</div>
+    <div class="dp-tagline">Maritime Financial Intelligence</div>
 </div>
 """, unsafe_allow_html=True)
+
+# Display logo at top center
+col1, col2, col3 = st.columns([1, 1, 1])
+with col2:
+    st.image("dp-world-vector-logo-2021-1.png", width=150)
 
 st.title("Financial Intelligence Dashboard")
 st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
