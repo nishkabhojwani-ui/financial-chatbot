@@ -16,7 +16,13 @@ load_dotenv()
 
 # Configuration
 DB = 'financial_data.db'
-API_KEY = os.getenv('OPENROUTER_API_KEY')
+
+# Get API key from Streamlit Secrets (Streamlit Cloud) or environment variables
+try:
+    API_KEY = st.secrets["OPENROUTER_API_KEY"]
+except:
+    API_KEY = os.getenv('OPENROUTER_API_KEY')
+
 st.set_page_config(page_title="Financial Intelligence Dashboard", layout="wide")
 
 # Load categories on startup
