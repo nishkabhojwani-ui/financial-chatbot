@@ -212,7 +212,39 @@ Keep it concise and focused on business insights."""
         return None
 
 def execute_query(question, unit='Africa'):
-    """Execute query and return results"""
+    """Execute query and return results - LLM analyzes and routes"""
+    msg = question.lower()
+
+    # Detect units from query
+    has_africa = 'africa' in msg
+    has_mena = 'mena' in msg
+    if has_africa and has_mena:
+        unit = None
+    elif has_africa:
+        unit = 'Africa'
+    elif has_mena:
+        unit = 'MENA'
+
+    # LLM is the primary intelligence - analyze and generate SQL
+    sql = get_llm_sql(question, unit)
+    if not sql:
+        return None, None, None
+
+    # Fix month format
+    sql = fix_month_in_sql(sql)
+
+    # Execute
+    result = query_db(sql)
+    if not result['ok']:
+        return None, None, None
+
+    data = result['data']
+    narrative = get_narrative(question, data)
+    return data, narrative, sql
+
+# OLD PATTERN MATCHING CODE (kept for reference but not used)
+def OLD_execute_query_patterns(question, unit='Africa'):
+    """OLD VERSION - kept for reference only"""
     msg = question.lower()
     sql = None
 
@@ -334,7 +366,37 @@ ORDER BY u.unit_name, total DESC"""
     narrative = get_narrative(question, data)
     return data, narrative, sql
 
-# Streamlit UI
+# Streamlit UI with DP World Branding
+st.markdown("""
+<style>
+.dp-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 10px;
+    padding: 15px 0;
+    border-bottom: 3px solid #00d084;
+}
+.dp-logo-text {
+    font-size: 28px;
+    font-weight: bold;
+    color: #00d084;
+    margin: 0;
+}
+.dp-tagline {
+    font-size: 13px;
+    color: #888;
+    margin: 5px 0 0 0;
+}
+</style>
+<div class="dp-header">
+    <div>
+        <div class="dp-logo-text">DP WORLD</div>
+        <div class="dp-tagline">Maritime Financial Intelligence</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 st.title("Financial Intelligence Dashboard")
 st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
 
