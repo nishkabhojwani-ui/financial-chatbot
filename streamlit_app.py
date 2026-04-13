@@ -496,28 +496,13 @@ ORDER BY u.unit_name, total DESC"""
     return data, narrative, sql
 
 # Streamlit UI - DP World Maritime FP&A Chatbot
-st.markdown("""
-<style>
-.dp-header {
-    text-align: center;
-    padding: 10px 0;
-    border-bottom: 3px solid #00d084;
-}
-.dp-logo-img {
-    height: 60px;
-    margin: 10px 0;
-}
-.dp-tagline {
-    font-size: 13px;
-    color: #888;
-    margin: 5px 0 0 0;
-}
-</style>
-<div class="dp-header">
-    <img src="dp-world-vector-logo-2021-1.png" alt="DP World" class="dp-logo-img">
-    <div class="dp-tagline">Maritime Financial Intelligence</div>
-</div>
-""", unsafe_allow_html=True)
+# Display logo at top center
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.image("dp-world-vector-logo-2021-1.png", use_container_width=True)
+
+st.markdown("<div style='border-bottom: 3px solid #00d084; margin: 10px 0;'></div>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #888; font-size: 13px;'>Maritime Financial Intelligence</p>", unsafe_allow_html=True)
 
 st.title("Financial Intelligence Dashboard")
 st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
