@@ -398,14 +398,27 @@ def generate_chart(question, data):
             )
             df_sorted = df_sorted.sort_values('_month_sort')
 
-            fig = px.line(df_sorted, x=month_col, y=y_col, markers=True,
-                         title='Monthly Trend',
-                         labels={y_col: y_col, month_col: 'Month'})
+            # If multiple numeric columns, create multiple line traces
+            if len(numeric_cols) > 1:
+                fig = px.line(df_sorted, x=month_col, y=numeric_cols, markers=True,
+                             title='Monthly Trend',
+                             labels={month_col: 'Month'})
+            else:
+                fig = px.line(df_sorted, x=month_col, y=y_col, markers=True,
+                             title='Monthly Trend',
+                             labels={y_col: y_col, month_col: 'Month'})
         elif len(text_cols) > 0 and len(numeric_cols) > 0:
             # Bar chart for categorical comparisons
-            fig = px.bar(df, x=x_col, y=y_col,
-                        title='Comparison',
-                        labels={y_col: y_col, x_col: x_col})
+            # If multiple numeric columns (e.g., actual vs budget), show all of them
+            if len(numeric_cols) > 1:
+                fig = px.bar(df, x=x_col, y=numeric_cols,
+                            title='Comparison',
+                            labels={x_col: x_col},
+                            barmode='group')
+            else:
+                fig = px.bar(df, x=x_col, y=y_col,
+                            title='Comparison',
+                            labels={y_col: y_col, x_col: x_col})
         else:
             # Scatter plot for numeric data
             fig = px.scatter(df, x=cols[0], y=y_col,
