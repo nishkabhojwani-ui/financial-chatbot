@@ -497,8 +497,6 @@ with st.sidebar:
     st.markdown("Financial analysis for your fleet")
     st.markdown("---")
 
-    unit = st.selectbox("Business Unit", ["Africa", "MENA"])
-
     st.markdown("---")
     st.subheader("BASIC - Simple Totals")
     col1, col2 = st.columns(2)
@@ -580,7 +578,7 @@ if send_btn or (st.session_state.get("query") and user_query):
         st.markdown(f"**Query:** {query_to_run}")
 
         with st.spinner("Processing your query..."):
-            data, narrative, sql = execute_query(query_to_run, unit)
+            data, narrative, sql = execute_query(query_to_run, None)
 
         if data:
             st.success(f"Found {len(data)} result(s)")
