@@ -306,151 +306,111 @@ ORDER BY u.unit_name, total DESC"""
     return data, narrative
 
 # Streamlit UI
-# Custom CSS for professional look
-st.markdown("""
-<style>
-.metric-card {
-    background-color: #1a1d3a;
-    padding: 20px;
-    border-radius: 8px;
-    border-left: 4px solid #00d084;
-    margin-bottom: 15px;
-}
-.metric-value {
-    font-size: 24px;
-    font-weight: bold;
-    color: #00d084;
-}
-.metric-label {
-    font-size: 12px;
-    color: #999;
-    margin-top: 5px;
-}
-.example-button {
-    background-color: #00d084;
-    color: white;
-    padding: 8px 16px;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    margin: 5px 0;
-    width: 100%;
-    text-align: left;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("Financial Intelligence Dashboard")
+st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
 
-# Header
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.title("Financial Intelligence Dashboard")
-    st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
-with col2:
-    unit = st.selectbox("Region", ["Africa", "MENA", "Both"], key="region_select")
-
-# Sidebar with KPIs
-def get_kpi_stats(region=None):
-    """Get summary statistics for KPI display"""
-    try:
-        conn = sqlite3.connect(DB)
-        cursor = conn.cursor()
-
-        unit_filter = f"WHERE u.unit_name = '{region}'" if region else ""
-
-        queries = {
-            'total_revenue': f"""SELECT ROUND(SUM(mf.actual), 2) FROM monthly_financials mf
-                                JOIN vessels v ON mf.vessel_id = v.vessel_id
-                                JOIN units u ON v.unit_id = u.unit_id
-                                JOIN pl_categories pc ON mf.category_id = pc.category_id
-                                WHERE pc.category_name LIKE '%Revenue%' {('AND u.unit_name = \''+region+'\'' if region else '')}""",
-            'total_overheads': f"""SELECT ROUND(SUM(mf.actual), 2) FROM monthly_financials mf
-                                  JOIN vessels v ON mf.vessel_id = v.vessel_id
-                                  JOIN units u ON v.unit_id = u.unit_id
-                                  WHERE pc.category_name LIKE '%Overhead%' {('AND u.unit_name = \''+region+'\'' if region else '')}""",
-            'ebitda': f"""SELECT ROUND(SUM(CASE WHEN pc.category_name LIKE '%EBITDA%' THEN mf.actual ELSE 0 END), 2)
-                         FROM monthly_financials mf
-                         JOIN pl_categories pc ON mf.category_id = pc.category_id
-                         JOIN vessels v ON mf.vessel_id = v.vessel_id
-                         JOIN units u ON v.unit_id = u.unit_id
-                         {('WHERE u.unit_name = \''+region+'\'' if region else '')}""",
-        }
-
-        stats = {}
-        for key, query in queries.items():
-            cursor.execute(query)
-            result = cursor.fetchone()
-            stats[key] = result[0] if result[0] else 0
-
-        conn.close()
-        return stats
-    except:
-        return {'total_revenue': 0, 'total_overheads': 0, 'ebitda': 0}
-
-# Display KPIs in sidebar
+# Sidebar with query categories
 with st.sidebar:
-    st.header("Maritime P&A")
-    stats = get_kpi_stats(unit if unit != "Both" else None)
+    st.header("Maritime FP&A")
+    st.markdown("Financial analysis for your fleet")
+    st.markdown("---")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Total Revenue", f"USD {stats['total_revenue']:,.0f}")
-        st.metric("EBITDA", f"USD {stats['ebitda']:,.0f}")
-    with col2:
-        st.metric("Total Overheads", f"USD {stats['total_overheads']:,.0f}")
+    unit = st.selectbox("Business Unit", ["Africa", "MENA"])
 
     st.markdown("---")
-    st.subheader("Standard Queries")
+    st.subheader("BASIC - Simple Totals")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Total Revenue", use_container_width=True):
+            st.session_state.query = "Total Revenue"
+        if st.button("EBITDA", use_container_width=True):
+            st.session_state.query = "EBITDA for Africa"
+    with col2:
+        if st.button("Operating Costs", use_container_width=True):
+            st.session_state.query = "Total Operating Cost"
+        if st.button("Overheads", use_container_width=True):
+            st.session_state.query = "Total Overheads"
 
-    example_queries = [
-        "EBITDA for Africa and MENA",
-        "Crew costs for Africa",
-        "Insurance by vessel",
-        "Operating costs by vessel",
-        "Charter fees by vessel"
-    ]
+    st.markdown("---")
+    st.subheader("BASIC - By Vessel")
+    if st.button("Crew Costs by Vessel", use_container_width=True):
+        st.session_state.query = "Crew cost by vessel"
+    if st.button("Operating Costs by Vessel", use_container_width=True):
+        st.session_state.query = "Operating costs by vessel"
+    if st.button("Insurance by Vessel", use_container_width=True):
+        st.session_state.query = "Insurance costs by vessel"
+    if st.button("Charter Hire by Vessel", use_container_width=True):
+        st.session_state.query = "Charter Hire by vessel"
 
-    for query_text in example_queries:
-        if st.button(query_text, key=query_text, use_container_width=True):
-            st.session_state.selected_query = query_text
+    st.markdown("---")
+    st.subheader("INTERMEDIATE - Variance")
+    if st.button("Crew Payroll Variance", use_container_width=True):
+        st.session_state.query = "Crew Payroll Cost actual vs budget"
+    if st.button("Charter Hire Variance", use_container_width=True):
+        st.session_state.query = "Charter Hire actual vs budget"
+    if st.button("Port Charges Variance", use_container_width=True):
+        st.session_state.query = "Port Handling Charges actual vs budget"
+    if st.button("Insurance Variance", use_container_width=True):
+        st.session_state.query = "Insurance actual vs budget"
 
-# Main query section
-st.markdown("---")
-st.subheader("Ask Questions")
+    st.markdown("---")
+    st.subheader("ADVANCED - Metrics")
+    if st.button("Crew Payroll by Vessel", use_container_width=True):
+        st.session_state.query = "Crew Payroll Cost by vessel"
+    if st.button("Fuel Costs by Vessel", use_container_width=True):
+        st.session_state.query = "Fuel and Water by vessel"
+    if st.button("EBIT Analysis", use_container_width=True):
+        st.session_state.query = "EBIT for Africa"
+    if st.button("Profit After Tax", use_container_width=True):
+        st.session_state.query = "PAT for Africa"
 
-# Check if a standard query was clicked
-if "selected_query" in st.session_state:
-    query = st.session_state.selected_query
-    st.text_input("Query", value=query, disabled=True, key="disabled_input")
-else:
-    query = st.text_input("What would you like to know?", placeholder="e.g., EBITDA for Africa in September 2024")
+    st.markdown("---")
+    st.info("Tip: You can also ask custom questions about your financial data. The AI will intelligently route your query.")
 
-if query:
-    with st.spinner("Analyzing..."):
-        data, narrative = execute_query(query, unit if unit != "Both" else None)
+# Main content area
+col1, col2 = st.columns([3, 1], gap="small")
+with col1:
+    st.markdown("### Your Question")
+with col2:
+    pass
 
-    if data:
-        col1, col2 = st.columns([2, 1])
-        with col1:
+# Input area
+input_col, btn_col = st.columns([4, 1], gap="small")
+with input_col:
+    user_query = st.text_input(
+        "Enter your question",
+        value=st.session_state.get("query", ""),
+        placeholder="Ask about costs, revenue, ratios, variance...",
+        label_visibility="collapsed",
+        key="user_input"
+    )
+with btn_col:
+    send_btn = st.button("Send", use_container_width=True)
+
+# Process query
+if send_btn or (st.session_state.get("query") and user_query):
+    query_to_run = user_query if user_query else st.session_state.get("query", "")
+
+    if query_to_run:
+        st.session_state.query = ""  # Clear for next use
+
+        st.markdown("---")
+        st.markdown(f"**Query:** {query_to_run}")
+
+        with st.spinner("Processing your query..."):
+            data, narrative = execute_query(query_to_run, unit)
+
+        if data and narrative:
             st.success(f"Found {len(data)} result(s)")
 
-        # Show narrative
-        st.subheader("Summary")
-        st.markdown(narrative)
+            st.markdown("### Summary")
+            st.markdown(narrative)
 
-        # Show table
-        st.subheader("Data")
-        st.dataframe(data, use_container_width=True)
-
-        # Show SQL
-        with st.expander("View SQL Query"):
-            st.code("(SQL query executed)", language="sql")
-    else:
-        st.error("No results found. Try rephrasing your question.")
-
-    # Clear selected query after execution
-    if "selected_query" in st.session_state:
-        del st.session_state.selected_query
-
-# Footer
-st.markdown("---")
-st.markdown("*Financial Intelligence Dashboard | Powered by Claude AI*")
+            st.markdown("### Data")
+            st.dataframe(data, use_container_width=True, hide_index=True)
+        elif data:
+            st.success(f"Found {len(data)} result(s)")
+            st.markdown("### Data")
+            st.dataframe(data, use_container_width=True, hide_index=True)
+        else:
+            st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
