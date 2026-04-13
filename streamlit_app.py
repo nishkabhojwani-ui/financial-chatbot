@@ -305,15 +305,18 @@ def get_narrative(question, data):
             "model": "anthropic/claude-3-haiku",
             "messages": [{
                 "role": "user",
-                "content": f"""Analyze this DP World Maritime Financial data and provide a brief business summary (2-3 paragraphs):
+                "content": f"""Analyze this DP World Maritime Financial data and provide a brief business summary.
 
-IMPORTANT DATA AVAILABILITY: We only have financial data for 2024. No data is available for any other years (2023, 2025, 2026, etc.).
-Always mention this limitation in your response: "Note: We only have financial data for 2024. No other years are available."
+IMPORTANT:
+1. Only 2024 data is available. No other years.
+2. Always mention: "Note: We only have financial data for 2024. No other years are available."
+3. Use proper spacing between all words
+4. Format numbers clearly with proper commas (e.g., 8.17 million, not 8.17million)
 
 Question: {question}
-Data Sample: {summary}
+Data: {summary}
 
-Keep it concise and focused on business insights."""
+Provide 2-3 short paragraphs with business insights."""
             }],
             "temperature": 0.7,
             "max_tokens": 400
@@ -346,86 +349,79 @@ Keep it concise and focused on business insights."""
         return None
 
 def generate_chart(question, data):
-    """Generate appropriate chart for trend or comparison queries"""
+    """Generate chart for trend and comparison queries"""
     if not data or len(data) < 2:
         return None
 
     try:
-        msg = question.lower()
         df = pd.DataFrame(data)
+        msg = question.lower()
 
-        # Get all numeric columns
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        # Find numeric columns
+        numeric_cols = [col for col in df.columns if df[col].dtype in ['int64', 'float64']]
         if not numeric_cols:
             return None
 
-        # Find month column
+        y_col = numeric_cols[0]
+
+        # Check for month column - TREND query
         month_col = None
         for col in df.columns:
             if 'month' in str(col).lower():
                 month_col = col
                 break
 
-        # TREND: Line chart for monthly data
-        if month_col and any(x in msg for x in ['trend', 'month', 'monthly', 'by month', 'over time', 'revenue']):
+        # If has month column and query mentions trend/monthly → LINE CHART
+        if month_col and any(kw in msg for kw in ['trend', 'month', 'monthly', 'revenue', 'by month']):
             month_order = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December']
 
-            # Create sort key
-            df['_month_sort'] = df[month_col].apply(
+            df_copy = df.copy()
+            df_copy['_sort'] = df_copy[month_col].apply(
                 lambda x: month_order.index(str(x)) if str(x) in month_order else 0
             )
-            df_sorted = df.sort_values('_month_sort')
+            df_copy = df_copy.sort_values('_sort')
 
             fig = go.Figure()
-            y_col = numeric_cols[0]
-
             fig.add_trace(go.Scatter(
-                x=df_sorted[month_col].astype(str),
-                y=df_sorted[y_col],
+                x=df_copy[month_col],
+                y=df_copy[y_col],
                 mode='lines+markers',
-                name=str(y_col),
                 line=dict(color='#00d084', width=3),
                 marker=dict(size=8)
             ))
-
             fig.update_layout(
-                title='Trend',
+                title='Monthly Trend',
                 xaxis_title='Month',
-                yaxis_title=str(y_col),
+                yaxis_title=y_col,
                 template='plotly_light',
                 height=400
             )
             return fig
 
-        # COMPARISON: Bar chart
-        # Find text column for grouping
-        text_cols = df.select_dtypes(include=['object']).columns.tolist()
-        if text_cols and any(x in msg for x in ['compare', 'vs', 'breakdown', 'by vessel', 'by unit', 'by category']):
-            group_col = text_cols[0]
-            y_col = numeric_cols[0]
-
+        # Otherwise → BAR CHART for comparisons
+        text_cols = [col for col in df.columns if df[col].dtype == 'object' and col != month_col]
+        if text_cols:
+            x_col = text_cols[0]
             fig = go.Figure()
             fig.add_trace(go.Bar(
-                x=df[group_col].astype(str),
+                x=df[x_col],
                 y=df[y_col],
                 marker=dict(color='#00d084')
             ))
-
             fig.update_layout(
                 title='Comparison',
-                xaxis_title=str(group_col),
-                yaxis_title=str(y_col),
+                xaxis_title=x_col,
+                yaxis_title=y_col,
                 template='plotly_light',
-                height=400,
-                showlegend=False
+                height=400
             )
             return fig
 
-        return None
+    except:
+        pass
 
-    except Exception as e:
-        return None
+    return None
 
 def execute_query(question, unit='Africa'):
     """Execute query and return results - LLM analyzes and routes"""
