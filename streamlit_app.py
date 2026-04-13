@@ -353,76 +353,65 @@ Note: We only have financial data for 2024. No other years are available."""
         return None
 
 def generate_chart(question, data):
-    """Generate chart for trend and comparison queries"""
-    if not data or len(data) < 2:
+    """Use LLM to generate Plotly chart code"""
+    if not data or len(data) < 2 or not API_KEY:
         return None
 
     try:
-        df = pd.DataFrame(data)
-        msg = question.lower()
+        # Ask LLM to generate chart code
+        df_info = pd.DataFrame(data)
+        columns_info = f"Columns: {', '.join(df_info.columns)}"
+        sample_data = df_info.head(3).to_string()
 
-        # Find numeric columns
-        numeric_cols = [col for col in df.columns if df[col].dtype in ['int64', 'float64']]
-        if not numeric_cols:
-            return None
+        prompt = f"""You are a data visualization expert. Generate ONLY Plotly Python code to create an appropriate chart.
 
-        y_col = numeric_cols[0]
+Question: {question}
+Data columns: {', '.join(df_info.columns)}
+Data shape: {df_info.shape}
 
-        # Check for month column - TREND query
-        month_col = None
-        for col in df.columns:
-            if 'month' in str(col).lower():
-                month_col = col
-                break
+Sample data:
+{sample_data}
 
-        # If has month column and query mentions trend/monthly → LINE CHART
-        if month_col and any(kw in msg for kw in ['trend', 'month', 'monthly', 'revenue', 'by month']):
-            month_order = ['January', 'February', 'March', 'April', 'May', 'June',
-                          'July', 'August', 'September', 'October', 'November', 'December']
+Generate ONLY valid Python code that:
+1. Uses: import plotly.graph_objects as go
+2. Creates a figure with go.Figure()
+3. Uses color '#00d084' (DP World green)
+4. Sets template='plotly_light'
+5. Sets height=400
+6. Returns a proper chart for the question
 
-            df_copy = df.copy()
-            df_copy['_sort'] = df_copy[month_col].apply(
-                lambda x: month_order.index(str(x)) if str(x) in month_order else 0
-            )
-            df_copy = df_copy.sort_values('_sort')
+IMPORTANT: Output ONLY the Python code. No explanations. No markdown. Just executable code.
+The variable 'data' is already a list of dictionaries with the above columns."""
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_copy[month_col],
-                y=df_copy[y_col],
-                mode='lines+markers',
-                line=dict(color='#00d084', width=3),
-                marker=dict(size=8)
-            ))
-            fig.update_layout(
-                title='Monthly Trend',
-                xaxis_title='Month',
-                yaxis_title=y_col,
-                template='plotly_light',
-                height=400
-            )
-            return fig
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "HTTP-Referer": "http://localhost:5001",
+                "X-Title": "DP World Maritime",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "anthropic/claude-3-haiku",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 800
+            },
+            timeout=30
+        )
 
-        # Otherwise → BAR CHART for comparisons
-        text_cols = [col for col in df.columns if df[col].dtype == 'object' and col != month_col]
-        if text_cols:
-            x_col = text_cols[0]
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=df[x_col],
-                y=df[y_col],
-                marker=dict(color='#00d084')
-            ))
-            fig.update_layout(
-                title='Comparison',
-                xaxis_title=x_col,
-                yaxis_title=y_col,
-                template='plotly_light',
-                height=400
-            )
-            return fig
+        if resp.status_code == 200:
+            code = resp.json()["choices"][0]["message"]["content"].strip()
 
-    except:
+            # Execute the generated code
+            local_vars = {'go': go, 'pd': pd, 'data': data}
+            exec(code, local_vars)
+
+            # Get the figure object
+            if 'fig' in local_vars:
+                return local_vars['fig']
+
+    except Exception as e:
         pass
 
     return None
@@ -692,11 +681,16 @@ if send_btn or (st.session_state.get("query") and user_query):
                 # Clean up narrative text - fix spacing issues
                 clean_narrative = narrative.replace("million,", "million, ").replace("million.", "million. ")
                 # Fix concatenated words like "whilethebudget" -> "while the budget"
-                import re
                 clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
                 st.markdown(clean_narrative)
             else:
                 st.markdown("Query executed successfully.")
+
+            # Chart section - LLM generates chart code
+            chart = generate_chart(query_to_run, data)
+            if chart:
+                st.markdown("### Visualization")
+                st.plotly_chart(chart, use_container_width=True)
 
             # Data section
             st.markdown("### Data")
