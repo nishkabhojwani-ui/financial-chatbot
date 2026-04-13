@@ -186,14 +186,25 @@ JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries'
 GROUP BY u.unit_name, pc.category_name
 
-PATTERN 4 - Vessel breakdown (aggregate):
-SELECT u.unit_name, v.vessel_name, pc.category_name, SUM(mf.actual) as total
+PATTERN 4 - Vessel breakdown (aggregate) - FOR "by vessel" QUERIES:
+SELECT v.vessel_name, pc.category_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
 JOIN units u ON v.unit_id = u.unit_id
 JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries'
-GROUP BY u.unit_name, v.vessel_name, pc.category_name
+GROUP BY v.vessel_name, pc.category_name
+ORDER BY total DESC
+
+PATTERN 4B - BY VESSEL WITH UNIT:
+SELECT u.unit_name, v.vessel_name, SUM(mf.actual) as total
+FROM monthly_financials mf
+JOIN vessels v ON mf.vessel_id = v.vessel_id
+JOIN units u ON v.unit_id = u.unit_id
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'Operating Costs'
+GROUP BY u.unit_name, v.vessel_name
+ORDER BY total DESC
 
 PATTERN 5 - DETAIL ROWS (when user asks for "details", "breakdown", "all values", "non-zero", etc - NO GROUP BY):
 SELECT u.unit_name, v.vessel_name, mf.year, mf.month, pc.category_name, mf.actual, mf.budget
@@ -221,14 +232,19 @@ MARGIN HANDLING (IMPORTANT):
 - When querying margins, use: WHERE ABS(mf.actual) <= 10 AND pc.category_name IN ('EBITDA Margin', 'EBIT Margin', 'PAT Margin')
 
 FILTER & QUERY TYPE INSTRUCTIONS:
+- "by vessel", "vessel breakdown", "each vessel" = use PATTERN 4 or 4B (group by v.vessel_name, ORDER BY DESC)
+- "by unit", "Africa", "MENA" = use PATTERN 1 (group by u.unit_name)
+- "compare", "vs", "comparison" = MUST include both units (WHERE ... IN ('Africa', 'MENA')) or both actual+budget
+- "actual vs budget", "variance", "over/under" = use PATTERN 3 (select actual, budget, variance columns)
+- "by month", "monthly", "trend", "this year" = use PATTERN 6 (monthly breakdown with year filter)
 - "non-zero" or "non-negative" = WHERE mf.actual != 0 or WHERE mf.actual > 0
 - "details", "breakdown", "show all", "list" = use PATTERN 5 (detail rows, no GROUP BY)
-- "by month", "monthly", "trend", "this year" = use PATTERN 6 (monthly breakdown with year filter)
-- "compare", "vs", "variance" = use variance pattern with GROUP BY
 - "total", "sum", "how much" = use aggregate pattern with SUM() and GROUP BY
+- "highest", "lowest", "top", "rank" = use PATTERN 4 with ORDER BY DESC/ASC
 - "tell me about" = provide monthly breakdown + totals to show trends and context
 - Database contains only 2024 data. Always use WHERE year = 2024
 - If user asks about current year (2026) or future years, note that only 2024 data is available
+- CRITICAL: When user asks to "compare", ensure the WHERE clause includes BOTH conditions (don't filter to just one unit)
 
 CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
 Task: "{question}"
@@ -419,6 +435,10 @@ def generate_chart(question, data):
 
         if actual_col and (budget_col or ly_col):
             return _create_grouped_bar_chart(df, month_col, actual_col, budget_col, ly_col)
+
+        # Also check for comparison queries with multiple numeric columns (Unit comparison, etc)
+        if any(word in question_lower for word in ['compare', 'vs', 'comparison']) and len(numeric_cols) > 1:
+            return _create_grouped_bar_chart(df, month_col, numeric_cols[0], numeric_cols[1] if len(numeric_cols) > 1 else None, None)
 
         # RULE 3: RANKING / CONTRIBUTION (asking for highest/lowest, single numeric value)
         if any(word in question_lower for word in ['highest', 'lowest', 'top', 'ranking', 'by vessel', 'contribution']) and len(numeric_cols) == 1:
