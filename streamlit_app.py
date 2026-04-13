@@ -503,11 +503,9 @@ st.markdown("""
     padding: 10px 0;
     border-bottom: 3px solid #00d084;
 }
-.dp-logo-text {
-    font-size: 28px;
-    font-weight: bold;
-    color: #00d084;
-    margin: 0;
+.dp-logo-img {
+    height: 60px;
+    margin: 10px 0;
 }
 .dp-tagline {
     font-size: 13px;
@@ -516,7 +514,7 @@ st.markdown("""
 }
 </style>
 <div class="dp-header">
-    <div class="dp-logo-text">DP WORLD</div>
+    <img src="dpworldlogo.png" alt="DP World" class="dp-logo-img">
     <div class="dp-tagline">Maritime Financial Intelligence</div>
 </div>
 """, unsafe_allow_html=True)
