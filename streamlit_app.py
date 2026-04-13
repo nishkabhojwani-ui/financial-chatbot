@@ -305,21 +305,26 @@ def get_narrative(question, data):
             "model": "anthropic/claude-3-haiku",
             "messages": [{
                 "role": "user",
-                "content": f"""You are a financial analyst. Analyze this data and write a brief summary (2-3 paragraphs).
+                "content": f"""You are a maritime finance business analyst. Analyze this data and provide KEY INSIGHTS (2-3 paragraphs).
 
-CRITICAL FORMATTING RULES - MUST FOLLOW:
+FOCUS ON INSIGHTS, NOT JUST DATA:
+- What does this data reveal about business performance?
+- Highlight significant trends, anomalies, or noteworthy patterns
+- Compare values meaningfully (e.g., "twice as high", "significantly exceeded")
+- Explain business implications
+- Identify opportunities or concerns
+
+FORMATTING RULES - MUST FOLLOW:
 - ALWAYS put a space after commas and periods
 - ALWAYS put spaces between words
-- NEVER concatenate words together
-- Write numbers as: "45,973 million" (with comma and space)
-- NEVER write "million," without space after it
+- Do NOT repeat units (e.g., just say "5,234" not "5,234 million" if context is clear)
 - Example WRONG: "whilethebudgetwas0"
 - Example RIGHT: "while the budget was 0"
 
 Data Summary: {summary}
 Question Asked: {question}
 
-Write 2-3 paragraphs. Remember: ALWAYS use proper spacing between words and after punctuation.
+Write 2-3 paragraphs with business insights and implications.
 Note: We only have financial data for 2024. No other years are available."""
             }],
             "temperature": 0.7,
