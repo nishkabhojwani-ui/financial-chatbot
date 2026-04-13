@@ -149,8 +149,11 @@ CRITICAL RULES:
 
 def get_narrative(question, data):
     """Generate narrative analysis using LLM"""
-    if not data or not API_KEY:
-        return f"Query returned {len(data) if data else 0} results for: {question}"
+    if not data:
+        return None
+
+    if not API_KEY:
+        return None
 
     try:
         summary = json.dumps(data[:5], indent=2)  # Show first 5 results
@@ -183,10 +186,15 @@ Keep it concise and focused on business insights."""
         )
 
         if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-        return f"Data retrieved: {len(data)} rows"
-    except:
-        return f"Data retrieved: {len(data)} rows"
+            result = resp.json()
+            if "choices" in result and len(result["choices"]) > 0:
+                return result["choices"][0]["message"]["content"].strip()
+        else:
+            st.warning(f"LLM API error: {resp.status_code}")
+        return None
+    except Exception as e:
+        st.warning(f"Could not generate narrative: {str(e)}")
+        return None
 
 def execute_query(question, unit='Africa'):
     """Execute query and return results"""
