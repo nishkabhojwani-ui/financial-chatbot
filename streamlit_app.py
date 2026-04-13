@@ -505,7 +505,7 @@ with col2:
     st.image("dp-world-vector-logo-2021-1.png", use_container_width=True)
 
 st.markdown("<div style='border-bottom: 3px solid #00d084; margin: 10px 0;'></div>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #888; font-size: 13px;'>Maritime Financial Intelligence</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #888; font-size: 13px; padding-left: 60px;'>Maritime Financial Intelligence</p>", unsafe_allow_html=True)
 
 st.title("Financial Intelligence Dashboard")
 st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
