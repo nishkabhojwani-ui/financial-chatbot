@@ -131,15 +131,15 @@ def get_llm_sql(question, unit):
         return None
 
     try:
-        # Get key categories for examples
-        key_categories = [c for c in ALL_CATEGORIES if any(x in c.lower() for x in ['revenue', 'cost', 'ebitda', 'ebit', 'pat'])][:5]
+        # Include ALL categories so LLM knows what's available
+        all_categories_str = ', '.join(ALL_CATEGORIES)
 
         context = f"""You are generating SQL for DP World Maritime Financial Analysis.
 
 DATABASE STRUCTURE:
 - units (u): unit_id, unit_name ('Africa' or 'MENA')
 - vessels (v): vessel_id, vessel_name, unit_id
-- pl_categories (pc): category_id, category_name (like 'Total Revenue', 'EBITDA', 'Charter Hire')
+- pl_categories (pc): category_id, category_name
 - monthly_financials (mf): vessel_id, category_id, year, month (TEXT), actual, budget, last_year, risk_factor_10
 
 FOREIGN KEYS:
@@ -150,7 +150,9 @@ FOREIGN KEYS:
 IMPORTANT COLUMN NOTES:
 - month is TEXT: 'January', 'February', ... 'December' (NEVER use numbers 1, 2, 3)
 - actual and budget are COLUMNS for variance analysis (not categories)
-- Categories: 'Total Revenue', 'EBITDA', 'Charter Hire', 'Total Operating Cost', 'Crew Payroll Cost', etc.
+
+AVAILABLE CATEGORIES (ALL {len(ALL_CATEGORIES)} of them):
+{all_categories_str}
 
 QUERY PATTERNS - Copy the Join structure exactly:
 
@@ -167,25 +169,26 @@ PATTERN 2 - Filter by specific category:
 SELECT pc.category_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN pl_categories pc ON mf.category_id = pc.category_id
-WHERE pc.category_name = 'Total Revenue'
+WHERE pc.category_name = 'Crew Salaries'
 GROUP BY pc.category_name
 
 PATTERN 3 - Actual vs Budget variance:
-SELECT u.unit_name, SUM(mf.actual) as actual, SUM(mf.budget) as budget, SUM(mf.actual - mf.budget) as variance
+SELECT u.unit_name, pc.category_name, SUM(mf.actual) as actual, SUM(mf.budget) as budget, SUM(mf.actual - mf.budget) as variance
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
 JOIN units u ON v.unit_id = u.unit_id
-WHERE u.unit_name = 'Africa'
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'Crew Salaries'
+GROUP BY u.unit_name, pc.category_name
 
-PATTERN 4 - By vessel breakdown:
-SELECT v.vessel_name, SUM(mf.actual) as total
+PATTERN 4 - By vessel breakdown with category:
+SELECT u.unit_name, v.vessel_name, pc.category_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
 JOIN units u ON v.unit_id = u.unit_id
-WHERE u.unit_name = 'Africa'
-GROUP BY v.vessel_name
-
-AVAILABLE CATEGORIES: {', '.join(key_categories)}, {', '.join(ALL_CATEGORIES[5:10])}, ... ({len(ALL_CATEGORIES)} total)
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'Crew Salaries'
+GROUP BY u.unit_name, v.vessel_name, pc.category_name
 
 CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
 Task: "{question}"
