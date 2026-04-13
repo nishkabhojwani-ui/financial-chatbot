@@ -156,7 +156,7 @@ AVAILABLE CATEGORIES (ALL {len(ALL_CATEGORIES)} of them):
 
 QUERY PATTERNS - Copy the Join structure exactly:
 
-PATTERN 1 - Compare by unit:
+PATTERN 1 - Aggregated by unit (totals):
 SELECT u.unit_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
@@ -165,14 +165,14 @@ JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE u.unit_name IN ('Africa', 'MENA')
 GROUP BY u.unit_name
 
-PATTERN 2 - Filter by specific category:
+PATTERN 2 - Category total (aggregate):
 SELECT pc.category_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries'
 GROUP BY pc.category_name
 
-PATTERN 3 - Actual vs Budget variance:
+PATTERN 3 - Variance analysis (aggregate):
 SELECT u.unit_name, pc.category_name, SUM(mf.actual) as actual, SUM(mf.budget) as budget, SUM(mf.actual - mf.budget) as variance
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
@@ -181,7 +181,7 @@ JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries'
 GROUP BY u.unit_name, pc.category_name
 
-PATTERN 4 - By vessel breakdown with category:
+PATTERN 4 - Vessel breakdown (aggregate):
 SELECT u.unit_name, v.vessel_name, pc.category_name, SUM(mf.actual) as total
 FROM monthly_financials mf
 JOIN vessels v ON mf.vessel_id = v.vessel_id
@@ -189,6 +189,21 @@ JOIN units u ON v.unit_id = u.unit_id
 JOIN pl_categories pc ON mf.category_id = pc.category_id
 WHERE pc.category_name = 'Crew Salaries'
 GROUP BY u.unit_name, v.vessel_name, pc.category_name
+
+PATTERN 5 - DETAIL ROWS (when user asks for "details", "breakdown", "all values", "non-zero", etc - NO GROUP BY):
+SELECT u.unit_name, v.vessel_name, mf.year, mf.month, pc.category_name, mf.actual, mf.budget
+FROM monthly_financials mf
+JOIN vessels v ON mf.vessel_id = v.vessel_id
+JOIN units u ON v.unit_id = u.unit_id
+JOIN pl_categories pc ON mf.category_id = pc.category_id
+WHERE pc.category_name = 'Crew Salaries' AND mf.actual != 0
+ORDER BY u.unit_name, v.vessel_name, mf.year, mf.month
+
+FILTER INSTRUCTIONS:
+- "non-zero" or "non negative" = WHERE mf.actual != 0 or WHERE mf.actual > 0
+- "details", "breakdown", "show all", "list" = use PATTERN 5 (detail rows, no GROUP BY)
+- "compare", "vs", "variance" = use variance pattern with GROUP BY
+- "total", "sum", "how much" = use aggregate pattern with SUM() and GROUP BY
 
 CRITICAL - Answer with ONLY SQL, nothing else. No explanation, no code blocks, no markdown.
 Task: "{question}"
