@@ -17,7 +17,7 @@ load_dotenv()
 # Configuration
 DB = 'financial_data.db'
 API_KEY = os.getenv('OPENROUTER_API_KEY')
-st.set_page_config(page_title="DP World FP&A Chatbot", layout="wide")
+st.set_page_config(page_title="Financial Intelligence Dashboard", layout="wide")
 
 # Load categories on startup
 @st.cache_resource
@@ -306,40 +306,151 @@ ORDER BY u.unit_name, total DESC"""
     return data, narrative
 
 # Streamlit UI
-st.title("⚓ DP World Maritime FP&A Chatbot")
-st.markdown("Ask natural language questions about financial data")
+# Custom CSS for professional look
+st.markdown("""
+<style>
+.metric-card {
+    background-color: #1a1d3a;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #00d084;
+    margin-bottom: 15px;
+}
+.metric-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #00d084;
+}
+.metric-label {
+    font-size: 12px;
+    color: #999;
+    margin-top: 5px;
+}
+.example-button {
+    background-color: #00d084;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    margin: 5px 0;
+    width: 100%;
+    text-align: left;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Sidebar
+# Header
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.title("Financial Intelligence Dashboard")
+    st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
+with col2:
+    unit = st.selectbox("Region", ["Africa", "MENA", "Both"], key="region_select")
+
+# Sidebar with KPIs
+def get_kpi_stats(region=None):
+    """Get summary statistics for KPI display"""
+    try:
+        conn = sqlite3.connect(DB)
+        cursor = conn.cursor()
+
+        unit_filter = f"WHERE u.unit_name = '{region}'" if region else ""
+
+        queries = {
+            'total_revenue': f"""SELECT ROUND(SUM(mf.actual), 2) FROM monthly_financials mf
+                                JOIN vessels v ON mf.vessel_id = v.vessel_id
+                                JOIN units u ON v.unit_id = u.unit_id
+                                JOIN pl_categories pc ON mf.category_id = pc.category_id
+                                WHERE pc.category_name LIKE '%Revenue%' {('AND u.unit_name = \''+region+'\'' if region else '')}""",
+            'total_overheads': f"""SELECT ROUND(SUM(mf.actual), 2) FROM monthly_financials mf
+                                  JOIN vessels v ON mf.vessel_id = v.vessel_id
+                                  JOIN units u ON v.unit_id = u.unit_id
+                                  WHERE pc.category_name LIKE '%Overhead%' {('AND u.unit_name = \''+region+'\'' if region else '')}""",
+            'ebitda': f"""SELECT ROUND(SUM(CASE WHEN pc.category_name LIKE '%EBITDA%' THEN mf.actual ELSE 0 END), 2)
+                         FROM monthly_financials mf
+                         JOIN pl_categories pc ON mf.category_id = pc.category_id
+                         JOIN vessels v ON mf.vessel_id = v.vessel_id
+                         JOIN units u ON v.unit_id = u.unit_id
+                         {('WHERE u.unit_name = \''+region+'\'' if region else '')}""",
+        }
+
+        stats = {}
+        for key, query in queries.items():
+            cursor.execute(query)
+            result = cursor.fetchone()
+            stats[key] = result[0] if result[0] else 0
+
+        conn.close()
+        return stats
+    except:
+        return {'total_revenue': 0, 'total_overheads': 0, 'ebitda': 0}
+
+# Display KPIs in sidebar
 with st.sidebar:
-    st.header("Settings")
-    unit = st.selectbox("Region", ["Africa", "MENA", "Both"])
-    st.markdown("---")
-    st.info("💡 **Example queries:**\n- EBITDA for Africa and MENA\n- Crew costs for Africa\n- Insurance by vessel")
+    st.header("Maritime P&A")
+    stats = get_kpi_stats(unit if unit != "Both" else None)
 
-# Main chat
-query = st.text_input("📊 What would you like to know?", placeholder="e.g., EBITDA for Africa in September 2024")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Revenue", f"USD {stats['total_revenue']:,.0f}")
+        st.metric("EBITDA", f"USD {stats['ebitda']:,.0f}")
+    with col2:
+        st.metric("Total Overheads", f"USD {stats['total_overheads']:,.0f}")
+
+    st.markdown("---")
+    st.subheader("Standard Queries")
+
+    example_queries = [
+        "EBITDA for Africa and MENA",
+        "Crew costs for Africa",
+        "Insurance by vessel",
+        "Operating costs by vessel",
+        "Charter fees by vessel"
+    ]
+
+    for query_text in example_queries:
+        if st.button(query_text, key=query_text, use_container_width=True):
+            st.session_state.selected_query = query_text
+
+# Main query section
+st.markdown("---")
+st.subheader("Ask Questions")
+
+# Check if a standard query was clicked
+if "selected_query" in st.session_state:
+    query = st.session_state.selected_query
+    st.text_input("Query", value=query, disabled=True, key="disabled_input")
+else:
+    query = st.text_input("What would you like to know?", placeholder="e.g., EBITDA for Africa in September 2024")
 
 if query:
     with st.spinner("Analyzing..."):
         data, narrative = execute_query(query, unit if unit != "Both" else None)
 
     if data:
-        st.success(f"✅ Found {len(data)} result(s)")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.success(f"Found {len(data)} result(s)")
 
         # Show narrative
-        st.markdown("### Summary")
+        st.subheader("Summary")
         st.markdown(narrative)
 
         # Show table
-        st.markdown("### Data")
+        st.subheader("Data")
         st.dataframe(data, use_container_width=True)
 
         # Show SQL
         with st.expander("View SQL Query"):
             st.code("(SQL query executed)", language="sql")
     else:
-        st.error("❌ No results found. Try rephrasing your question.")
+        st.error("No results found. Try rephrasing your question.")
+
+    # Clear selected query after execution
+    if "selected_query" in st.session_state:
+        del st.session_state.selected_query
 
 # Footer
 st.markdown("---")
-st.markdown("*DP World Maritime FP&A Chatbot | Powered by Claude AI*")
+st.markdown("*Financial Intelligence Dashboard | Powered by Claude AI*")
