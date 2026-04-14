@@ -932,17 +932,19 @@ with col2:
     pass
 
 # Input area
-input_col, btn_col = st.columns([4, 1], gap="small")
-with input_col:
+with st.form("query_form", clear_on_submit=False):
     user_query = st.text_input(
         "Enter your question",
         value=st.session_state.get("query", ""),
-        placeholder="Ask about costs, revenue, ratios, variance...",
+        placeholder="Ask about costs, revenue, ratios, variance... (Press Enter or click Send)",
         label_visibility="collapsed",
         key="user_input"
     )
-with btn_col:
-    send_btn = st.button("Send", use_container_width=True)
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.empty()
+    with col2:
+        send_btn = st.form_submit_button("Send", use_container_width=True)
 
 # Process query
 if send_btn or (st.session_state.get("query") and user_query):
