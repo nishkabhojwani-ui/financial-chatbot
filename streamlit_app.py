@@ -427,9 +427,10 @@ def generate_chart(question, data):
         if 'by vessel' in question_lower or 'each vessel' in question_lower:
             return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
 
-        # Logic 5: If has months and asking for trend → LINE CHART
-        if has_month and any(word in question_lower for word in ['trend', 'monthly', 'by month']):
-            return _create_line_chart(df, [c for c in cols if 'month' in c.lower()][0], numeric_cols)
+        # Logic 5: If has months → LINE CHART (PRIORITY)
+        if has_month:
+            month_col = [c for c in cols if 'month' in c.lower()][0]
+            return _create_line_chart(df, month_col, numeric_cols)
 
         # Logic 6: Default for multiple numeric columns → BAR CHART
         if has_multiple_numeric and text_cols:
@@ -438,11 +439,6 @@ def generate_chart(question, data):
         # Logic 7: Default for single numeric + text → HORIZONTAL BAR
         if text_cols and len(numeric_cols) == 1:
             return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
-
-        # Logic 8: If has months → LINE CHART
-        if has_month:
-            month_col = [c for c in cols if 'month' in c.lower()][0]
-            return _create_line_chart(df, month_col, numeric_cols)
 
         return None
 
