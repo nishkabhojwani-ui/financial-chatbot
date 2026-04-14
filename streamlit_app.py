@@ -17,6 +17,8 @@ import pandas as pd
 
 load_dotenv()
 
+st.set_page_config(page_title="Financial Intelligence Dashboard", layout="wide")
+
 # Configuration
 DB = 'financial_data.db'
 
@@ -25,8 +27,6 @@ try:
     API_KEY = st.secrets["OPENROUTER_API_KEY"]
 except:
     API_KEY = os.getenv('OPENROUTER_API_KEY')
-
-st.set_page_config(page_title="Financial Intelligence Dashboard", layout="wide")
 
 # Load categories on startup
 @st.cache_resource
@@ -938,75 +938,79 @@ with st.form("query_form"):
     send_btn = st.form_submit_button("Send Query", use_container_width=True)
 
 # Process query
-if send_btn or (st.session_state.get("query") and user_query):
-    query_to_run = user_query if user_query else st.session_state.get("query", "")
+query_from_button = st.session_state.get("query", "")
+query_to_run = ""
 
-    if query_to_run:
-        st.session_state.query = ""  # Clear for next use
+if send_btn and user_query:
+    query_to_run = user_query
+elif query_from_button:
+    query_to_run = query_from_button
+    st.session_state.query = ""  # Clear for next use
 
-        st.markdown("---")
-        st.markdown(f"**Query:** {query_to_run}")
+if query_to_run:
+    st.markdown("---")
+    st.markdown(f"**Query:** {query_to_run}")
 
-        with st.spinner("Processing your query..."):
-            data, narrative, sql = execute_query(query_to_run, None)
+    with st.spinner("Processing your query..."):
+        data, narrative, sql = execute_query(query_to_run, None)
 
-        if data:
-            st.success(f"Found {len(data)} result(s)")
+    if data:
+        st.success(f"Found {len(data)} result(s)")
 
-            # Summary section with narrative
-            st.markdown("### Summary")
-            if narrative:
-                # Clean up narrative text - fix spacing issues
-                clean_narrative = narrative
+        # Summary section with narrative
+        st.markdown("### Summary")
+        if narrative:
+            # Clean up narrative text - fix spacing issues
+            clean_narrative = narrative
 
-                # Fix common spacing issues after punctuation
-                clean_narrative = re.sub(r'\.([A-Z])', r'. \1', clean_narrative)  # .The -> . The
-                clean_narrative = re.sub(r',([A-Za-z])', r', \1', clean_narrative)  # ,the -> , the
+            # Fix common spacing issues after punctuation
+            clean_narrative = re.sub(r'\.([A-Z])', r'. \1', clean_narrative)  # .The -> . The
+            clean_narrative = re.sub(r',([A-Za-z])', r', \1', clean_narrative)  # ,the -> , the
 
-                # Fix concatenated lowercase words (e.g., "frommonth" -> "from month")
-                clean_narrative = re.sub(r'([a-z])([a-z]{3,}(?:from|to|and|the|is|was|has|while|which|during|month|year|between))',
-                                        lambda m: f"{m.group(1)} {m.group(2)}" if m.group(2).lower() in ['from', 'to', 'and', 'the', 'is', 'was', 'has', 'while', 'which', 'during', 'month', 'year', 'between'] else m.group(0),
-                                        clean_narrative, flags=re.IGNORECASE)
+            # Fix concatenated lowercase words (e.g., "frommonth" -> "from month")
+            clean_narrative = re.sub(r'([a-z])([a-z]{3,}(?:from|to|and|the|is|was|has|while|which|during|month|year|between))',
+                                    lambda m: f"{m.group(1)} {m.group(2)}" if m.group(2).lower() in ['from', 'to', 'and', 'the', 'is', 'was', 'has', 'while', 'which', 'during', 'month', 'year', 'between'] else m.group(0),
+                                    clean_narrative, flags=re.IGNORECASE)
 
-                # Fix lowercase to uppercase transitions (e.g., "whileThe" -> "while The")
-                clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
+            # Fix lowercase to uppercase transitions (e.g., "whileThe" -> "while The")
+            clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
 
-                # Fix numbers concatenated with words
-                clean_narrative = re.sub(r'(\d)([a-z])', r'\1 \2', clean_narrative)  # 5the -> 5 the
-                clean_narrative = re.sub(r'([a-z])(\d)', r'\1 \2', clean_narrative)  # the5 -> the 5
+            # Fix numbers concatenated with words
+            clean_narrative = re.sub(r'(\d)([a-z])', r'\1 \2', clean_narrative)  # 5the -> 5 the
+            clean_narrative = re.sub(r'([a-z])(\d)', r'\1 \2', clean_narrative)  # the5 -> the 5
 
-                st.markdown(clean_narrative)
-            else:
-                st.markdown("Query executed successfully.")
-
-            # Chart section - LLM generates chart code
-            chart = generate_chart(query_to_run, data)
-            if chart:
-                st.markdown("### Visualization")
-                st.plotly_chart(chart, use_container_width=True)
-
-            # Data section
-            st.markdown("### Data")
-            # Format margin columns as percentages
-            display_data = pd.DataFrame(data)
-            for col in display_data.columns:
-                if 'margin' in col.lower() and col not in ['unit_name', 'vessel_name', 'category_name', 'month', 'year']:
-                    # Check if values are already percentages (if max > 100, assume already multiplied)
-                    if display_data[col].max() < 100 and display_data[col].min() > -100:
-                        # Format as percentage
-                        display_data[col] = display_data[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else x)
-            st.dataframe(display_data, use_container_width=True, hide_index=True)
-
-            # Show SQL query in expander
-            if sql:
-                with st.expander("View SQL Query"):
-                    st.code(sql, language="sql")
-
-            # Show metadata
-            with st.expander("Metadata"):
-                st.metric("Records", len(data))
+            st.markdown(clean_narrative)
         else:
-            st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
+            st.markdown("Query executed successfully.")
+
+        # Chart section - LLM generates chart code
+        chart = generate_chart(query_to_run, data)
+        if chart:
+            st.markdown("### Visualization")
+            st.plotly_chart(chart, use_container_width=True)
+
+        # Data section
+        st.markdown("### Data")
+        # Format margin columns as percentages
+        display_data = pd.DataFrame(data)
+        for col in display_data.columns:
+            if 'margin' in col.lower() and col not in ['unit_name', 'vessel_name', 'category_name', 'month', 'year']:
+                # Check if values are already percentages (if max > 100, assume already multiplied)
+                if display_data[col].max() < 100 and display_data[col].min() > -100:
+                    # Format as percentage
+                    display_data[col] = display_data[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else x)
+        st.dataframe(display_data, use_container_width=True, hide_index=True)
+
+        # Show SQL query in expander
+        if sql:
+            with st.expander("View SQL Query"):
+                st.code(sql, language="sql")
+
+        # Show metadata
+        with st.expander("Metadata"):
+            st.metric("Records", len(data))
+    else:
+        st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
 
 # Add DP World logo at bottom right
 st.markdown("---")
