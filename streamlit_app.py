@@ -127,16 +127,43 @@ def fix_sql_joins(sql, question):
 
     return sql
 
+def build_chat_history():
+    """Build condensed conversation history for LLM context"""
+    history = []
+    for msg in st.session_state.get("messages", [])[-6:]:  # Last 6 messages (3 turns)
+        if msg["role"] == "user":
+            history.append(f"User: {msg['content']}")
+        else:
+            content = msg.get("content", {})
+            if isinstance(content, dict):
+                narrative = content.get("narrative", "")
+                sql = content.get("sql", "")
+                summary = f"Assistant: {narrative[:200]}"
+                if sql:
+                    summary += f"\n[SQL used: {sql[:150]}]"
+                history.append(summary)
+    return "\n".join(history)
+
 def get_llm_sql(question, unit):
-    """Ask LLM to generate SQL"""
+    """Ask LLM to generate SQL with conversation context"""
     if not API_KEY:
         return None
 
     try:
-        # Include ALL categories so LLM knows what's available
         all_categories_str = ', '.join(ALL_CATEGORIES)
+        chat_history = build_chat_history()
+
+        history_block = ""
+        if chat_history:
+            history_block = f"""
+CONVERSATION HISTORY (use this to understand follow-up questions):
+{chat_history}
+
+The user's new message may reference previous questions/answers. Use the history to resolve references like "that", "same for", "compare with", "now show", "what about", etc.
+"""
 
         context = f"""You are generating SQL for DP World Maritime Financial Analysis.
+{history_block}
 
 DATABASE STRUCTURE:
 - units (u): unit_id, unit_name ('Africa' or 'MENA')
@@ -251,7 +278,7 @@ Task: "{question}"
 SQL:"""
 
         payload = {
-            "model": "anthropic/claude-3-haiku",
+            "model": "qwen/qwen3-max",
             "messages": [{"role": "user", "content": context}],
             "temperature": 0.1,
             "max_tokens": 500
@@ -324,13 +351,23 @@ def get_narrative(question, data):
         st.session_state.last_llm_call = time.time()
 
         summary = json.dumps(data[:5], indent=2)  # Show first 5 results
+        chat_history = build_chat_history()
+
+        history_block = ""
+        if chat_history:
+            history_block = f"""
+CONVERSATION HISTORY (for context on what the user has been asking):
+{chat_history}
+
+Use this context to make your analysis more relevant. Reference previous findings if applicable.
+"""
 
         payload = {
-            "model": "anthropic/claude-3-haiku",
+            "model": "qwen/qwen3-max",
             "messages": [{
                 "role": "user",
                 "content": f"""You are a maritime finance business analyst. Analyze this data and provide KEY INSIGHTS (2-3 paragraphs).
-
+{history_block}
 FOCUS ON INSIGHTS, NOT JUST DATA:
 - What does this data reveal about business performance?
 - Highlight significant trends, anomalies, or noteworthy patterns
@@ -852,26 +889,88 @@ ORDER BY u.unit_name, total DESC"""
     narrative = get_narrative(question, data)
     return data, narrative, sql
 
-# Streamlit UI - DP World Maritime FP&A Chatbot
-# Display logo at top center
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.image("dp-world-vector-logo-2021-1.png", use_container_width=True)
+def clean_narrative_text(narrative):
+    """Clean up LLM narrative text - fix spacing issues"""
+    clean = narrative
+    clean = re.sub(r'\.([A-Z])', r'. \1', clean)
+    clean = re.sub(r',([A-Za-z])', r', \1', clean)
+    clean = re.sub(r'([a-z])([a-z]{3,}(?:from|to|and|the|is|was|has|while|which|during|month|year|between))',
+                    lambda m: f"{m.group(1)} {m.group(2)}" if m.group(2).lower() in ['from', 'to', 'and', 'the', 'is', 'was', 'has', 'while', 'which', 'during', 'month', 'year', 'between'] else m.group(0),
+                    clean, flags=re.IGNORECASE)
+    clean = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean)
+    clean = re.sub(r'(\d)([a-z])', r'\1 \2', clean)
+    clean = re.sub(r'([a-z])(\d)', r'\1 \2', clean)
+    return clean
 
-st.markdown("<div style='border-bottom: 3px solid #00d084; margin: 10px 0;'></div>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #888; font-size: 13px; padding-left: 160px;'>Maritime Financial Intelligence</p>", unsafe_allow_html=True)
+def format_display_data(data):
+    """Format data for display, converting margin columns to percentages"""
+    display_data = pd.DataFrame(data)
+    for col in display_data.columns:
+        if 'margin' in col.lower() and col not in ['unit_name', 'vessel_name', 'category_name', 'month', 'year']:
+            if display_data[col].max() < 100 and display_data[col].min() > -100:
+                display_data[col] = display_data[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else x)
+    return display_data
 
-st.title("Financial Intelligence Dashboard")
-st.markdown("Analyze vessel operations, budgets, and financial performance with AI-powered insights")
+def process_query(question):
+    """Process a question and return structured response for chat"""
+    data, narrative, sql = execute_query(question, None)
+    if not data:
+        return None
+    return {
+        "narrative": clean_narrative_text(narrative) if narrative else "Query executed successfully.",
+        "question": question,
+        "data": data,
+        "sql": sql,
+    }
 
-# Sidebar with query categories
+def render_response(response, msg_index):
+    """Render a stored response inside a chat message"""
+    st.markdown(response["narrative"])
+
+    if response.get("data"):
+        st.dataframe(format_display_data(response["data"]), use_container_width=True, hide_index=True)
+
+    if response.get("sql"):
+        with st.expander("View SQL Query"):
+            st.code(response["sql"], language="sql")
+
+    # Toggle visualization on/off
+    if response.get("data") and len(response["data"]) >= 2:
+        chart_key = f"chart_visible_{msg_index}"
+        showing = st.session_state.get(chart_key, False)
+        label = "Hide Chart" if showing else "Visualize"
+        if st.button(label, key=f"btn_{msg_index}"):
+            st.session_state[chart_key] = not showing
+            st.rerun()
+        if showing:
+            chart = generate_chart(response.get("question", ""), response["data"])
+            if chart:
+                st.plotly_chart(chart, use_container_width=True)
+            else:
+                st.info("Not enough data dimensions to generate a chart.")
+
+# --- Streamlit UI ---
+
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Sidebar
 with st.sidebar:
+    st.image("dp-world-vector-logo-2021-1.png", use_container_width=True)
+    st.markdown("<div style='border-bottom: 3px solid #00d084; margin: 10px 0;'></div>", unsafe_allow_html=True)
     st.header("Maritime FP&A")
     st.markdown("Financial analysis for your fleet")
-    st.markdown("---")
+
+    if st.button("Clear Chat", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.query = ""
+        st.rerun()
 
     st.markdown("---")
-    st.subheader("BASIC - Simple Totals")
+    st.subheader("Quick Queries")
+
+    st.caption("BASIC - Simple Totals")
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Total Revenue", use_container_width=True):
@@ -884,8 +983,7 @@ with st.sidebar:
         if st.button("Overheads", use_container_width=True):
             st.session_state.query = "Total Overheads"
 
-    st.markdown("---")
-    st.subheader("BASIC - By Vessel")
+    st.caption("BASIC - By Vessel")
     if st.button("Crew Costs by Vessel", use_container_width=True):
         st.session_state.query = "Crew cost by vessel"
     if st.button("Operating Costs by Vessel", use_container_width=True):
@@ -895,8 +993,7 @@ with st.sidebar:
     if st.button("Charter Hire by Vessel", use_container_width=True):
         st.session_state.query = "Charter Hire by vessel"
 
-    st.markdown("---")
-    st.subheader("INTERMEDIATE - Variance")
+    st.caption("INTERMEDIATE - Variance")
     if st.button("Crew Payroll Variance", use_container_width=True):
         st.session_state.query = "Crew Payroll Cost actual vs budget"
     if st.button("Charter Hire Variance", use_container_width=True):
@@ -906,8 +1003,7 @@ with st.sidebar:
     if st.button("Insurance Variance", use_container_width=True):
         st.session_state.query = "Insurance actual vs budget"
 
-    st.markdown("---")
-    st.subheader("ADVANCED - Metrics")
+    st.caption("ADVANCED - Metrics")
     if st.button("Crew Payroll by Vessel", use_container_width=True):
         st.session_state.query = "Crew Payroll Cost by vessel"
     if st.button("Fuel Costs by Vessel", use_container_width=True):
@@ -917,103 +1013,47 @@ with st.sidebar:
     if st.button("Profit After Tax", use_container_width=True):
         st.session_state.query = "PAT for Africa"
 
-    st.markdown("---")
-    st.info("Tip: You can also ask custom questions about your financial data. The AI will intelligently route your query.")
+# Main chat area
+st.title("Maritime Financial Chatbot")
+st.caption("Ask questions about vessel operations, budgets, and financial performance")
 
-# Main content area
-col1, col2 = st.columns([3, 1], gap="small")
-with col1:
-    st.markdown("### Your Question")
-with col2:
-    pass
+# Render chat history
+for i, msg in enumerate(st.session_state.messages):
+    with st.chat_message(msg["role"]):
+        if msg["role"] == "user":
+            st.markdown(msg["content"])
+        else:
+            render_response(msg["content"], i)
 
-# Input area
-with st.form("query_form"):
-    user_query = st.text_input(
-        "Enter your question",
-        placeholder="Ask about costs, revenue, ratios, variance... (Press ENTER to submit)",
-        label_visibility="collapsed",
-        key="user_input"
-    )
-    send_btn = st.form_submit_button("Send Query", use_container_width=True)
-
-# Process query
+# Determine query source: chat input or sidebar button
 query_from_button = st.session_state.get("query", "")
-query_to_run = ""
+user_input = st.chat_input("Ask about costs, revenue, ratios, variance...")
 
-if send_btn and user_query:
-    query_to_run = user_query
+query_to_run = None
+if user_input:
+    query_to_run = user_input
 elif query_from_button:
     query_to_run = query_from_button
-    st.session_state.query = ""  # Clear for next use
+    st.session_state.query = ""
 
+# Process new query
 if query_to_run:
-    st.markdown("---")
-    st.markdown(f"**Query:** {query_to_run}")
+    # Show user message
+    st.session_state.messages.append({"role": "user", "content": query_to_run})
+    with st.chat_message("user"):
+        st.markdown(query_to_run)
 
-    with st.spinner("Processing your query..."):
-        data, narrative, sql = execute_query(query_to_run, None)
+    # Generate and show assistant response
+    with st.chat_message("assistant"):
+        with st.spinner("Analyzing..."):
+            response = process_query(query_to_run)
 
-    if data:
-        st.success(f"Found {len(data)} result(s)")
-
-        # Summary section with narrative
-        st.markdown("### Summary")
-        if narrative:
-            # Clean up narrative text - fix spacing issues
-            clean_narrative = narrative
-
-            # Fix common spacing issues after punctuation
-            clean_narrative = re.sub(r'\.([A-Z])', r'. \1', clean_narrative)  # .The -> . The
-            clean_narrative = re.sub(r',([A-Za-z])', r', \1', clean_narrative)  # ,the -> , the
-
-            # Fix concatenated lowercase words (e.g., "frommonth" -> "from month")
-            clean_narrative = re.sub(r'([a-z])([a-z]{3,}(?:from|to|and|the|is|was|has|while|which|during|month|year|between))',
-                                    lambda m: f"{m.group(1)} {m.group(2)}" if m.group(2).lower() in ['from', 'to', 'and', 'the', 'is', 'was', 'has', 'while', 'which', 'during', 'month', 'year', 'between'] else m.group(0),
-                                    clean_narrative, flags=re.IGNORECASE)
-
-            # Fix lowercase to uppercase transitions (e.g., "whileThe" -> "while The")
-            clean_narrative = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_narrative)
-
-            # Fix numbers concatenated with words
-            clean_narrative = re.sub(r'(\d)([a-z])', r'\1 \2', clean_narrative)  # 5the -> 5 the
-            clean_narrative = re.sub(r'([a-z])(\d)', r'\1 \2', clean_narrative)  # the5 -> the 5
-
-            st.markdown(clean_narrative)
+        if response:
+            # Index will be the next position in messages list
+            next_index = len(st.session_state.messages)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            render_response(response, next_index)
         else:
-            st.markdown("Query executed successfully.")
-
-        # Chart section - LLM generates chart code
-        chart = generate_chart(query_to_run, data)
-        if chart:
-            st.markdown("### Visualization")
-            st.plotly_chart(chart, use_container_width=True)
-
-        # Data section
-        st.markdown("### Data")
-        # Format margin columns as percentages
-        display_data = pd.DataFrame(data)
-        for col in display_data.columns:
-            if 'margin' in col.lower() and col not in ['unit_name', 'vessel_name', 'category_name', 'month', 'year']:
-                # Check if values are already percentages (if max > 100, assume already multiplied)
-                if display_data[col].max() < 100 and display_data[col].min() > -100:
-                    # Format as percentage
-                    display_data[col] = display_data[col].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else x)
-        st.dataframe(display_data, use_container_width=True, hide_index=True)
-
-        # Show SQL query in expander
-        if sql:
-            with st.expander("View SQL Query"):
-                st.code(sql, language="sql")
-
-        # Show metadata
-        with st.expander("Metadata"):
-            st.metric("Records", len(data))
-    else:
-        st.error("No results found. Try rephrasing your question or select a different query from the sidebar.")
-
-# Add DP World logo at bottom right
-st.markdown("---")
-col1, col2 = st.columns([3, 1])
-with col2:
-    st.image("dp-world-vector-logo-2021-1.png", width=200)
+            error_msg = "I couldn't find results for that query. Try rephrasing your question or use one of the quick queries in the sidebar."
+            st.warning(error_msg)
+            st.session_state.messages.append({"role": "assistant", "content": {"narrative": error_msg, "data": [], "chart": None, "sql": None}})
