@@ -955,10 +955,12 @@ def render_response(response, msg_index):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Reduce sidebar top padding
+st.markdown("""<style>section[data-testid="stSidebar"] > div:first-child {padding-top: 0rem;}</style>""", unsafe_allow_html=True)
+
 # Sidebar
 with st.sidebar:
-    st.image("dp-world-vector-logo-2021-1.png", use_container_width=True)
-    st.markdown("<div style='border-bottom: 3px solid #00d084; margin: 10px 0;'></div>", unsafe_allow_html=True)
+    st.image("DPWORLD-1.png", width=220)
     st.header("Maritime FP&A")
     st.markdown("Financial analysis for your fleet")
 
