@@ -411,6 +411,11 @@ def generate_chart(question, data):
         has_budget = any('budget' in c.lower() for c in numeric_cols)
         has_multiple_numeric = len(numeric_cols) > 1
 
+        # PRIORITY: If has months → LINE CHART (check first, before comparisons)
+        if has_month:
+            month_col = [c for c in cols if 'month' in c.lower()][0]
+            return _create_line_chart(df, month_col, numeric_cols)
+
         # Logic 1: If asking for comparison or vs → BAR CHART (grouped bars)
         if any(word in question_lower for word in ['compare', ' vs ', 'vs ', ' vs', 'comparison']):
             return _create_bar_chart(df, text_cols, numeric_cols, question)
@@ -427,12 +432,7 @@ def generate_chart(question, data):
         if 'by vessel' in question_lower or 'each vessel' in question_lower:
             return _create_horizontal_bar_chart(df, text_cols, numeric_cols[0], question)
 
-        # Logic 5: If has months → LINE CHART (PRIORITY)
-        if has_month:
-            month_col = [c for c in cols if 'month' in c.lower()][0]
-            return _create_line_chart(df, month_col, numeric_cols)
-
-        # Logic 6: Default for multiple numeric columns → BAR CHART
+        # Logic 5: Default for multiple numeric columns → BAR CHART
         if has_multiple_numeric and text_cols:
             return _create_bar_chart(df, text_cols, numeric_cols, question)
 
